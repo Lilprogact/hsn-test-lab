@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src https://api.github.com; base-uri 'none'; form-action 'none'; object-src 'none'; frame-ancestors 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b1410">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="HSN Test Lab">
+  <title>HSN Test Lab</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="lock" class="lock" hidden>
+  <div class="lock-card">
+    <p class="lock-mark">HSN <span>Test Lab</span></p>
+    <form id="lock-create" hidden autocomplete="off">
+      <h2>Create a password</h2>
+      <p class="help">It locks this site and encrypts your GitHub token on this device. The password itself is never stored anywhere.</p>
+      <label>Password <input type="password" id="create-pass-1" autocomplete="new-password" minlength="6" required></label>
+      <label>Again <input type="password" id="create-pass-2" autocomplete="new-password" minlength="6" required></label>
+      <p class="error" id="create-error" hidden></p>
+      <button type="submit" class="primary">Set password</button>
+    </form>
+    <form id="lock-unlock" hidden autocomplete="off">
+      <h2>Enter your password</h2>
+      <label>Password <input type="password" id="unlock-pass" autocomplete="current-password" required autofocus></label>
+      <p class="error" id="unlock-error" hidden></p>
+      <button type="submit" class="primary">Unlock</button>
+      <button type="button" class="link" id="forgot-password">Forgot it? Clear this device</button>
+    </form>
+    <p class="help" id="lock-unsupported" hidden>This browser can't do the encryption the lock needs. Open the site in Safari or Chrome over https.</p>
+  </div>
+</div>
+
+<header class="top">
+  <div class="top-inner">
+    <h1 class="brand">HSN <span>Test Lab</span></h1>
+    <nav class="tabs" aria-label="Sections">
+      <button type="button" class="tab is-active" data-view="backtest">Backtest</button>
+      <button type="button" class="tab" data-view="million">Million</button>
+      <button type="button" class="tab" data-view="paper">Paper</button>
+      <button type="button" class="tab" data-view="firm">HSN Capital</button>
+      <button type="button" class="tab" data-view="runs">Runs</button>
+      <button type="button" class="tab" data-view="settings">Settings</button>
+    </nav>
+    <button type="button" class="lock-btn" id="lock-now" title="Lock the site">Lock</button>
+  </div>
+  <div class="clockbar" id="clockbar" aria-live="polite"></div>
+</header>
+
+<main class="main">
+  <p class="notice" id="global-notice" hidden></p>
+  <p class="notice warn" id="trial-notice" hidden></p>
+
+  <section id="view-backtest" class="view"></section>
+  <section id="view-million" class="view" hidden></section>
+  <section id="view-paper" class="view" hidden></section>
+  <section id="view-firm" class="view" hidden></section>
+  <section id="view-runs" class="view" hidden></section>
+  <section id="view-settings" class="view" hidden></section>
+</main>
+
+<div id="modal" class="modal" hidden>
+  <div class="modal-card">
+    <button type="button" class="modal-close" id="modal-close" aria-label="Close">×</button>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
