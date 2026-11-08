@@ -1,4 +1,5 @@
-// Mode 3: live paper testing — reads the VPS service's snapshot from the `paper-live` branch and the daily trades
+// Mode 3: live paper testing — reads the paper snapshot the engine imported from the VPS's published feed
+// (status/paper_live.json, refreshed by the Data check; docs/VPS_FEED.md) and the daily trades
 // from main. Shows each paper strategy's open positions, today's pips and money, equity, the alerts it acted on or
 // skipped with the reason, the backtest check, the market clock and the current market type. If alerts or prices
 // stop arriving it says "Paper testing paused" with the last times and the reason. Nothing is guessed.
@@ -27,7 +28,7 @@ export class PaperView {
     this.root.replaceChildren(h("p", { class: "muted" }, "Loading the paper desk…"));
     try {
       const [snap, cfg, backtest, firmPaper] = await Promise.all([
-        gh.getJson(state.token, state.owner, "paper/snapshot.json", "paper-live"),
+        gh.getJson(state.token, state.owner, "status/paper_live.json"),
         gh.getJson(state.token, state.owner, "paper/config.json"),
         gh.getJson(state.token, state.owner, "paper/backtest_check.json"),
         gh.getJson(state.token, state.owner, "paper/firm_paper_results.json"),
@@ -40,15 +41,15 @@ export class PaperView {
   render(snap, cfg, backtest, firmPaper) {
     const out = [];
     if (!snap) {
-      out.push(card("Live paper testing", h("p", { class: "warnc" }, "Paper testing paused — no snapshot yet. The VPS paper service has not published anything (install it from vps/README.md, or check its watchdog)."),
+      out.push(card("Live paper testing", h("p", { class: "warnc" }, "Paper testing paused — no snapshot yet. Where the paper service runs is still to be decided with Hassan (ground rules of 8 Nov: separate demo accounts, nothing on the bots' accounts); once it publishes to the VPS feed, the Data check brings its snapshot here."),
         this.configCard(cfg)));
       this.root.replaceChildren(...out);
       return;
     }
     const ageMin = (Date.now() - Date.parse(snap.updated_at)) / 60000;
-    const stale = ageMin > 15;
+    const stale = ageMin > 90;              // the snapshot reaches the site through the feed import, not live
     const paused = snap.paused || stale || snap.alerts_stale;
-    const reason = snap.paused ? snap.paused_reason : stale ? `no snapshot for ${Math.round(ageMin)} minutes (service or VPS down?)` : snap.alerts_stale ? "no alert for more than 6 hours" : "";
+    const reason = snap.paused ? snap.paused_reason : stale ? `last imported snapshot is ${Math.round(ageMin)} minutes old (the feed import runs with the Data check)` : snap.alerts_stale ? "no alert for more than 6 hours" : "";
     out.push(card("Live paper testing", h("div", { class: "row" },
       paused ? badge("Paper testing paused", "warn") : badge("live", "good"),
       h("span", { class: "muted" }, `snapshot ${ukDateTime(snap.updated_at)} UK · last price ${ukDateTime(snap.last_price_time)} · last alert ${ukDateTime(snap.last_alert_time)}`)),
