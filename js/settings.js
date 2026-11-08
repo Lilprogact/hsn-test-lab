@@ -112,7 +112,7 @@ export class SettingsView {
       const m = await gh.getJson(state.token, state.owner, "status/mt5_cloud.json");
       if (!m) { this.mt5El.replaceChildren(h("p", { class: "muted" }, "Never run. Set the three secrets (below) and press the button.")); return; }
       if (m.status) { this.mt5El.replaceChildren(h("p", { class: "warnc" }, `${m.status} — ${m.note || ""}`), h("p", { class: "muted" }, `checked ${ukDateTime(m.at)}`)); return; }
-      if (m.probe) { this.mt5El.replaceChildren(h("p", {}, badge(m.initialize_ok ? "MT5 starts on the cloud runner" : "MT5 did not start on the cloud runner", m.initialize_ok ? "good" : "bad"), " ", h("span", { class: "muted" }, JSON.stringify(m.last_error || ""))) ); return; }
+      if (m.probe) { this.mt5El.replaceChildren(h("p", {}, badge(m.terminal_started ? "MetaTrader 5 installs and starts on the cloud runner" : "MetaTrader 5 did not start on the cloud runner", m.terminal_started ? "good" : "bad"), " ", badge(m.api_attached ? "Python API attached" : "Python API not attached (no login yet)", m.api_attached ? "good" : "warn")), h("p", { class: "help" }, m.note || "")); return; }
       const rows = (m.symbols || []).map((x) => ({ Symbol: x.symbol, "Bars added": x.error ? "—" : num(x.bars_added, 0), "Earliest bar this run": x.error ? "" : (x.earliest_bar_this_run || "").slice(0, 16), "Months touched": x.error ? "" : (x.months_touched || []).join(" "), Problem: x.error ? `${x.error}${x.candidates?.length ? ` · names on this server: ${x.candidates.join(", ")}` : ""}` : "" }));
       this.mt5El.replaceChildren(
         h("p", {}, badge(`last export ${ukDateTime(m.at)}`, "good"), " ", badge(`${m.terminal?.company || "?"} · build ${m.terminal?.build || "?"}`), " ",
