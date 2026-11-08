@@ -101,9 +101,31 @@ export class SettingsView {
         h("li", {}, "GitHub → hsn-test-lab-engine → Settings → Secrets and variables → Actions → New repository secret, three times: FOREXCOM_MT5_LOGIN, FOREXCOM_MT5_PASSWORD, FOREXCOM_MT5_SERVER (the server name exactly as in the email)."),
         h("li", {}, "Press Export FOREX.com history now. The first run asks the server for up to 10 years of 1-minute bars (it gives what it has, usually one to a few years for gold) and runs the Data check. After that it runs every Monday at 01:17 UTC and only adds new bars."),
         h("li", {}, "If a symbol is not found, the report lists the names on that server that look like it (NAS100 is often named differently); re-run the workflow from the Actions tab with the right names in the symbols input."))));
-    this.root.replaceChildren(tokenCard, pwCard, limitsCard, usageCard, dataCard, mt5Card, misc);
+    this.feedEl = h("div", {}, h("p", { class: "muted" }, "Loading…"));
+    const feedCard = card("VPS feed (read-only, weekly release)", this.feedEl,
+      h("p", { class: "help" }, "The VPS publishes one GitHub Release a week on Lilprogact/hsn-vps-feed (prices, indicator lines, signals, results + a manifest with checksums). The Data check reads the latest release with a read-only token (VPS_FEED_READ_TOKEN in the engine's secrets), verifies every checksum, imports the alerts and the research, and only catalogues the Vantage prices — never a results source. Nothing can write back."));
+    this.root.replaceChildren(tokenCard, pwCard, limitsCard, usageCard, dataCard, mt5Card, feedCard, misc);
     this.loadUsage();
     this.loadMt5();
+    this.loadFeed();
+  }
+
+  async loadFeed() {
+    if (!state.token) return;
+    try {
+      const f = await gh.getJson(state.token, state.owner, "status/vps_feed.json");
+      if (!f) { this.feedEl.replaceChildren(h("p", { class: "muted" }, "Not read yet: add VPS_FEED_READ_TOKEN (Contents read-only on hsn-vps-feed) to the engine's secrets; the next Data check reads the latest release.")); return; }
+      if (f.error) { this.feedEl.replaceChildren(h("p", { class: "warnc" }, `${f.error} (checked ${ukDateTime(f.imported_at)})`)); return; }
+      const rel = f.release || {};
+      const rows = (f.assets || []).map((a) => ({ File: a.name, Kind: a.kind, Size: `${num((a.bytes || 0) / 1048576, 1)} MB`, Checksum: a.checksum || "—", "Date range": a.date_from ? `${a.date_from} → ${a.date_to || "?"}` : "—", Extracted: a.extracted ? `${num(a.extracted.files, 0)} files` : "—" }));
+      this.feedEl.replaceChildren(
+        h("p", {}, badge(`release ${rel.tag || "?"} · ${ukDateTime(rel.published_at)}`, "good"), " ", badge(`imported ${ukDateTime(f.imported_at)}`), " ",
+          f.imported?.alerts_files ? badge(`${f.imported.alerts_files} alert files`) : null, " ", f.imported?.research_files ? badge(`${f.imported.research_files} research files`) : null),
+        table(["File", "Kind", "Size", "Checksum", "Date range", "Extracted"], rows),
+        f.catalogue?.prices ? h("p", { class: "muted" }, `Vantage prices in the feed: ${num(f.catalogue.prices.bars, 0)} bars, ${(f.catalogue.prices.first_bar || "").slice(0, 10)} → ${(f.catalogue.prices.last_bar || "").slice(0, 10)} (comparison material only, not imported).`) : null,
+        (f.left_out || []).length ? h("details", {}, h("summary", {}, `${f.left_out.length} things left out`), h("ul", {}, ...f.left_out.map((x) => h("li", {}, x)))) : null,
+        (f.warnings || []).length ? h("p", { class: "warnc" }, f.warnings.join(" · ")) : null);
+    } catch (e) { this.feedEl.replaceChildren(h("p", { class: "error" }, e.message)); }
   }
 
   async loadMt5() {

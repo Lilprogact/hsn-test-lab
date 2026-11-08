@@ -41,7 +41,8 @@ export class PaperView {
   render(snap, cfg, backtest, firmPaper) {
     const out = [];
     if (!snap) {
-      out.push(card("Live paper testing", h("p", { class: "warnc" }, "Paper testing paused — no snapshot yet. Where the paper service runs is still to be decided with Hassan (ground rules of 8 Nov: separate demo accounts, nothing on the bots' accounts); once it publishes to the VPS feed, the Data check brings its snapshot here."),
+      out.push(card("Live paper testing", h("p", {}, badge("PARKED", "warn"), " ", h("span", { class: "muted" }, "Hassan's decision of 8 Nov 2026: backtests and HSN Capital first; nothing of the Test Lab runs on the VPS.")),
+        h("p", { class: "help" }, "When it returns it will use virtual books only (no order code), on demo accounts opened just for the Test Lab, reading the indicator alerts the VPS publishes in its weekly feed. HSN Capital's floor 5 (\"20 paper days\") says \"waiting for paper testing\" until then."),
         this.configCard(cfg)));
       this.root.replaceChildren(...out);
       return;
