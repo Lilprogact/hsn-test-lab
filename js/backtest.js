@@ -6,8 +6,9 @@ import { lineChart, barChart, histogram, heatmapHtml } from "./charts.js";
 import { Replay } from "./replay.js";
 
 const TIMEFRAMES = ["1M", "3M", "5M", "15M", "30M", "45M", "1H", "2H", "3H", "4H"];
-const STRATEGIES = [["indicator_as_is", "Indicator as is"], ["waves", "Waves rules (draft)"], ["agent2_80pct", "Agent 2's 80% strategy"], ["agent5_agreement_pullback", "Agent 5's agreement + pullback"], ["custom", "Describe my own"]];
-const STYLE_LABEL = { tp1: "All out at TP1", tp2: "All out at TP2", tp3: "All out at TP3", split5: "Five-position split (2/2/1)" };
+const STRATEGIES = [["indicator_as_is", "Indicator as is"], ["waves", "Waves rules (his real code)"], ["agent2_80pct", "Agent 2's 80% strategy (not on GitHub yet)"], ["agent5_agreement_pullback", "Agent 5's agreement + pullback (not on GitHub yet)"], ["custom", "Describe my own"]];
+const STYLE_LABEL = { tp1: "All out at TP1", tp2: "All out at TP2", tp3: "All out at TP3", split5: "Five-position split (2/2/1)", waves: "The Waves bot's own exits" };
+const WAVES_NOTE = "Waves rules run through Hassan's own bot code (SYSTEMS-HSN, branch claude/waves, snapshot of 31 Oct 2026) in paper mode, not through the test lab's simulator: the starting balance must be £500 or £1,000 (the code's own rule), risk is always his stepped cap, exits are the bot's own (2/2/1, the 1/8 entry close, breakevens, touch rules), and the red-news rule is not checked (no calendar for past dates). A long 1-minute history needs more than one run: each run covers what fits in its time budget and says where it stopped.";
 
 export class BacktestView {
   constructor(root) {
@@ -41,6 +42,8 @@ export class BacktestView {
     f.spreadMult = select([["1", "As recorded"], ["1.5", "Raised by 50% (stress)"], ["2", "Doubled (stress)"]], "1");
     f.describe = h("textarea", { placeholder: "Type your rules in plain English. Claude writes them as a strategy module with tests, then shows you its reading of your rules for you to confirm before anything runs." });
     f.describeName = input("text", "", { placeholder: "name for this strategy, e.g. london-pullback" });
+    f.touchCount = select([["restart", "restart (his answer, ANS Q41)"], ["continue", "continue (to compare)"]], "restart");
+    f.wavesMinutes = input("number", 20, { min: 2, max: 25, step: 1 });
     this.f = f;
     const customBox = h("div", { class: "card tight", hidden: true },
       h("h3", {}, "Describe my own strategy"),
@@ -49,13 +52,20 @@ export class BacktestView {
       h("div", { class: "row" }, h("button", { class: "secondary", onclick: () => this.describeStrategy() }, "Have Claude write it")),
       h("p", { class: "help" }, "Generated code runs its tests in a sandbox with no secrets and no network. Nothing runs until you confirm Claude's reading of your rules."));
     this.customBox = customBox;
-    f.strategy.addEventListener("change", () => { customBox.hidden = f.strategy.value !== "custom"; });
+    const wavesBox = h("div", { class: "card tight", hidden: true }, h("h3", {}, "Waves rules — his real code"),
+      h("p", { class: "help" }, WAVES_NOTE), h("div", { class: "group" }, field("Touch count after a broken line", f.touchCount, "his answer: restart"), field("Time budget for the bot (minutes)", f.wavesMinutes, "a run stops and says where")));
+    this.wavesBox = wavesBox;
+    f.strategy.addEventListener("change", () => {
+      customBox.hidden = f.strategy.value !== "custom";
+      wavesBox.hidden = f.strategy.value !== "waves";
+      if (f.strategy.value === "waves" && ![500, 1000].includes(+f.balance.value)) f.balance.value = 500;
+    });
     const run = h("button", { class: "primary", onclick: () => this.run() }, "Run backtest");
     this.runBtn = run;
     const form = h("div", { class: "card form" },
       h("h2", {}, "Backtest", badge("Engine: deterministic Python on real FOREX.com bars")),
       h("div", { class: "group" }, field("Instrument", f.instrument), field("Strategy", f.strategy), field("Exits", f.exits), field("Market type at entry", f.marketType)),
-      customBox,
+      customBox, wavesBox,
       h("div", { class: "group" }, field("Timeframes (any mix)", f.timeframes)),
       h("div", { class: "group" }, field("From", f.dateFrom, "blank = all data"), field("To", f.dateTo), field("Unseen months", f.unseen, "held back from tuning"), field("Targets TP1 / TP2 / TP3 (R)", h("div", { class: "row" }, f.tp1, f.tp2, f.tp3))),
       h("div", { class: "group" }, field("Starting balance £", f.balance), field("Credit £", f.credit, "counted in the balance"), field("Risk per set", f.riskType), field("Risk value (£ or %)", f.riskValue, "fixed / percent only")),
@@ -94,6 +104,10 @@ export class BacktestView {
       lot_spread: f.lotSpread.value, market_type: f.marketType.value, leverage: +f.leverage.value, luck_runs: +f.luck.value,
       spread_multiplier: +f.spreadMult.value, experiment: +f.cooldown.value > 0 ? { cooldown_minutes: +f.cooldown.value } : null,
     };
+    if (strategy === "waves") {
+      s.strategy_params = { touch_count: f.touchCount.value, max_seconds: Math.max(2, Math.min(25, +f.wavesMinutes.value || 20)) * 60 };
+      s.exits = "all"; s.risk = { type: "stepped" }; s.experiment = null;
+    }
     return s;
   }
 
@@ -101,6 +115,7 @@ export class BacktestView {
     const s = this.settings();
     if (!s.strategy) { alert("Pick a saved strategy or describe a new one first."); return; }
     if (!s.timeframes.length) { alert("Pick at least one timeframe."); return; }
+    if (s.strategy === "waves" && ![500, 1000].includes(s.start_balance)) { alert("The Waves code sizes from a £500 or £1,000 start only (its own rule). Set the starting balance to 500 or 1000."); return; }
     this.runBtn.disabled = true;
     this.showProgress({ phase: "queued" });
     try {
@@ -135,7 +150,7 @@ export class BacktestView {
     out.replaceChildren();
     const head = card(h("span", {}, "Result ", h("span", { class: "mono dim" }, requestId)),
       h("div", { class: "row" }, badge(r.status, r.status === "done" ? "good" : "bad"), r.trial_mode ? badge("TRIAL MODE", "trial") : null,
-        badge(`${r.settings?.instrument} · ${(r.settings?.timeframes || []).join(" ")}`), badge(r.settings?.strategy || ""), r.settings?.strategy === "waves" ? badge("DRAFT rules", "warn") : null,
+        badge(`${r.settings?.instrument} · ${(r.settings?.timeframes || []).join(" ")}`), badge(r.settings?.strategy || ""), r.settings?.strategy === "waves" ? badge(`his real code · ${(r.waves?.code?.commit || "").slice(0, 7)} · ${r.waves?.code?.bot || ""}`, "good") : null,
         h("button", { class: "secondary small", onclick: () => this.downloadCsv(requestId) }, "Trades CSV")));
     out.append(head);
     if (r.errors?.length) {
@@ -160,6 +175,7 @@ export class BacktestView {
           r.ranking.map((x) => ({ "Exit style": STYLE_LABEL[x.exit_style] || x.exit_style, "Unseen £": money(x.unseen_pnl_gbp), "Unseen avg R": signed(x.unseen_avg_r, 3), "All £": money(x.all_pnl_gbp), "All avg R": signed(x.all_avg_r, 3), "Beat random?": x.beats_random === null ? "—" : x.beats_random ? "yes" : "no" })),
           { numeric: ["Unseen £", "Unseen avg R", "All £", "All avg R"] })));
     }
+    if (r.waves) out.append(this.wavesCard(requestId, r.waves));
     const styles = Object.keys(r.by_exit_style || {});
     for (const style of styles) {
       out.append(this.styleBlock(style, r.by_exit_style[style], r, r.experiment_by_exit_style?.[style]));
@@ -287,6 +303,55 @@ export class BacktestView {
       this.renderCodegen(result);
       this.loadCustomStrategies();
     } catch (e) { this.progress.replaceChildren(h("p", { class: "error" }, e.message)); }
+  }
+
+  wavesCard(requestId, w) {
+    const code = w.code || {}, c = (w.summary?.counts || {})[Object.keys(w.summary?.counts || {})[0]] || {};
+    const pips = (w.summary?.pips || {})[Object.keys(w.summary?.pips || {})[0]] || {};
+    const pipRows = (obj) => Object.entries(obj || {}).map(([k, v]) => ({ "": k, "Pips won": num(+v.pips_won, 1), "Pips lost": num(+v.pips_lost, 1), "Pips net": signed(+v.pips_net, 1), "£ net": money(+v.gbp_net, 2), Positions: v.positions, "Sets won / lost": `${v.sets_won} / ${v.sets_lost}` }));
+    const skipRows = Object.entries(c["5m_skipped"] || {}).map(([k, v]) => ({ Reason: k, "5M signals skipped": v }));
+    const picked = (w.picked_decisions || []).map((d) => h("li", {}, h("span", { class: "mono dim" }, `${(d.at || "").slice(0, 16).replace("T", " ")} ${d.template} `), d.reason, d.rule?.length ? h("span", { class: "dim" }, ` [${d.rule.join(", ")}]`) : null));
+    const decisionsBtn = h("button", { class: "secondary small", onclick: () => this.showDecisions(requestId) }, "Every decision (the bot's own sentences)");
+    return card("The Waves bot's own account of this run",
+      h("p", { class: "help" }, `Code: ${code.repo} · ${code.branch} · ${code.commit} (${(code.commit_date || "").slice(0, 10)}) · bot ${code.bot} · touch count "${code.touch_count}" · paper mode, ${code.orders_at_terminal} orders reached a terminal · start £${num(code.start_balance, 0)}.`),
+      w.covered && !w.covered.complete ? h("p", { class: "warnc" }, `Covered ${(w.covered.from || "").slice(0, 16)} → ${w.covered.to}. Run again from that date for the rest.`) : null,
+      h("div", { class: "stats" },
+        stat("Alerts sent to the bot", Object.entries(w.alerts_sent || {}).map(([k, v]) => `${k}: ${v}`).join(" · ") || "—"),
+        stat("5M signals", num(c["5m_signals"], 0), `${num(c["5m_taken"], 0)} taken`),
+        stat("Line sets (15M/1H/4H)", `${num(c.line_sets?.placed, 0)} placed`, `${num(c.line_sets?.sets_with_a_fill, 0)} filled · ${num(c.line_sets?.moved, 0)} moved with the line`),
+        stat("Touches", Object.entries(c.touches || {}).map(([k, v]) => `${k === "5" ? "5M" : k === "15" ? "15M" : k === "60" ? "1H" : k === "240" ? "4H" : k}: ${v}`).join(" · ") || "—"),
+        stat("Breakeven moves", num(Object.values(c.be_moves || {}).reduce((a, b) => a + b, 0), 0), Object.entries(c.be_moves || {}).map(([k, v]) => `${k}: ${v}`).join(" · ")),
+        stat("Exits", `TP ${num(c.tp, 0)} · BE ${num(c.be_closes, 0)} · SL ${num(c.sl, 0)}`, `broken line ${num(c.broken_line, 0)} · stopped then TP1 ${num(c.stopped_then_tp1, 0)}`),
+        stat("News rule", "not checked", "no calendar for past dates (IN-13)", "warnc"),
+        stat("Bot time", `${num(w.bot_seconds, 0)} s`, `${num(w.events_stepped, 0)} price and alert events`)),
+      skipRows.length ? h("div", {}, h("h3", {}, "Why 5M signals were skipped"), table(["Reason", "5M signals skipped"], skipRows, { numeric: ["5M signals skipped"] })) : null,
+      pips.by_timeframe ? h("div", {}, h("h3", {}, "Pips and £ by timeframe (the bot's own count: each closed position once)"), table(["", "Pips won", "Pips lost", "Pips net", "£ net", "Positions", "Sets won / lost"], pipRows(pips.by_timeframe), { numeric: ["Pips won", "Pips lost", "Pips net", "£ net", "Positions"] })) : null,
+      pips.by_rule ? h("details", {}, h("summary", {}, "By rule"), table(["", "Pips won", "Pips lost", "Pips net", "£ net", "Positions", "Sets won / lost"], pipRows(pips.by_rule), { numeric: ["Pips won", "Pips lost", "Pips net", "£ net", "Positions"] })) : null,
+      pips.by_exit ? h("details", {}, h("summary", {}, "By exit"), table(["", "Pips won", "Pips lost", "Pips net", "£ net", "Positions", "Sets won / lost"], pipRows(pips.by_exit), { numeric: ["Pips won", "Pips lost", "Pips net", "£ net", "Positions"] })) : null,
+      picked.length ? h("details", { open: true }, h("summary", {}, `${picked.length} decisions picked across the rule types (${w.summary?.decision_templates ? Object.values(w.summary.decision_templates).reduce((a, b) => a + b, 0) : "?"} in all)`), h("ul", { class: "decisions" }, ...picked)) : null,
+      h("div", { class: "row" }, decisionsBtn),
+      h("p", { class: "help" }, (w.money_facts || {}).note || ""));
+  }
+
+  async showDecisions(requestId) {
+    const body = h("div", {}, h("p", { class: "muted" }, "Loading the bot's decision log…"));
+    openModal(body);
+    try {
+      const text = await gh.getGzipText(state.token, state.owner, `results/${requestId}/waves_decisions.jsonl.gz`);
+      if (!text) { body.replaceChildren(h("p", { class: "error" }, "No decision log in this run.")); return; }
+      const rows = text.split("\n").filter(Boolean).map((l) => JSON.parse(l));
+      const filter = input("text", "", { placeholder: "filter: a word, a rule id (E5-8), a template (S-ROOM), a set id" });
+      const list = h("div", { class: "decision-log" });
+      const render = () => {
+        const q = filter.value.trim().toLowerCase();
+        const shown = rows.filter((d) => !q || `${d.template} ${d.reason} ${(d.rule || []).join(" ")} ${d.set_id || ""} ${d.tf}`.toLowerCase().includes(q)).slice(0, 2000);
+        list.replaceChildren(h("p", { class: "muted" }, `${shown.length} of ${rows.length} decisions${shown.length === 2000 ? " (first 2,000 shown; narrow the filter)" : ""}`),
+          ...shown.map((d) => h("div", { class: `decision ${d.warning ? "warn" : ""}` }, h("span", { class: "mono dim" }, `${(d.at || "").slice(0, 16).replace("T", " ")} ${d.tf}m ${d.template}`), " ", d.reason, d.rule?.length ? h("span", { class: "dim" }, ` [${d.rule.join(", ")}]`) : null)));
+      };
+      filter.addEventListener("input", render);
+      body.replaceChildren(h("h2", {}, "Every decision the Waves bot made"), h("p", { class: "help" }, "One sentence per decision, in the bot's own words, with the rule ids it applied (see the code's docs/SPEC.md for each id). A ⚠ row carries the bot's own warning (here usually: the news rule could not be checked)."), filter, list);
+      render();
+    } catch (e) { body.replaceChildren(h("p", { class: "error" }, e.message)); }
   }
 
   renderCodegen(result) {

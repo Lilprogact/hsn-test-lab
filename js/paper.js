@@ -100,7 +100,7 @@ export class PaperView {
     const list = h("div", { class: "list" }, ...strategies.map((s, i) => h("div", { class: "item" }, h("span", {}, h("span", { class: "t" }, s.name), h("span", { class: "d" }, ` ${s.strategy} · ${JSON.stringify(s.params || {})} · start £${s.start_balance} · risk ${JSON.stringify(s.risk)}`)),
       h("button", { class: "secondary small", onclick: () => { strategies.splice(i, 1); this.saveConfig({ ...cfg, strategies }); } }, "remove"))));
     const name = input("text", "", { placeholder: "name" });
-    const strat = select([["indicator_as_is", "Indicator as is"], ["waves", "Waves rules (draft)"]], "indicator_as_is");
+    const strat = select([["indicator_as_is", "Indicator as is"]], "indicator_as_is");
     const style = select([["split5", "split 2/2/1"], ["tp1", "TP1"], ["tp2", "TP2"], ["tp3", "TP3"]], "split5");
     const bal = input("number", 500, { min: 1 });
     const risk = select([["stepped", "stepped cap"], ["fixed100", "fixed £100"], ["percent20", "20% per set"], ["million", "Million plan (20%)"]], "stepped");
@@ -111,7 +111,8 @@ export class PaperView {
       this.saveConfig({ ...(cfg || {}), symbol: cfg?.symbol || "XAUUSD", leverage: cfg?.leverage || 20, strategies });
     } }, "Add");
     return card("Paper strategies (up to 5, each with its own balance and money plan)", list.childElementCount ? list : h("p", { class: "muted" }, "None configured: the service runs its default (indicator as is, split 2/2/1, £500, stepped cap)."),
-      h("div", { class: "group form" }, field("Name", name), field("Strategy", strat), field("Exit", style), field("Start £", bal), field("Money plan", risk)), h("div", { class: "row" }, add, h("span", { class: "help" }, "Saved through a workflow; the VPS service picks it up on its next restart.")));
+      h("div", { class: "group form" }, field("Name", name), field("Strategy", strat), field("Exit", style), field("Start £", bal), field("Money plan", risk)), h("div", { class: "row" }, add, h("span", { class: "help" }, "Saved through a workflow; the VPS service picks it up on its next restart.")),
+      h("p", { class: "help" }, "The Waves rules are not a choice here: they are Hassan's own bot code, and his three Waves bots on their demo accounts already are their live paper test. In the test lab they run through the Backtest page (his real code, replayed on FOREX.com bars)."));
   }
 
   async saveConfig(cfg) {

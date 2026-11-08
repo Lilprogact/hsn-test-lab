@@ -128,6 +128,23 @@ export async function getText(token, owner, path, ref = "main") {
   }
 }
 
+/** Read a gzipped text file (e.g. waves_decisions.jsonl.gz) from the engine repo: the raw bytes, inflated in the
+ *  browser (DecompressionStream, Safari 16.4+ / Chrome 80+). Returns null when it doesn't exist. */
+export async function getGzipText(token, owner, path, ref = "main") {
+  let response;
+  try {
+    response = await fetch(`${API}/repos/${owner}/${ENGINE_REPO}/contents/${encodePath(path)}?ref=${encodeURIComponent(ref)}&t=${Date.now()}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github.raw+json", "X-GitHub-Api-Version": "2022-11-28" }, cache: "no-store" });
+  } catch {
+    throw new GitHubError("Couldn't reach GitHub. Check your connection.", 0, "network");
+  }
+  if (response.status === 404) return null;
+  if (!response.ok) throw classify(response.status, null);
+  if (typeof DecompressionStream === "undefined") throw new GitHubError("This browser can't inflate gzip files; open the file from the Actions run instead.", 0, "other");
+  const inflated = response.body.pipeThrough(new DecompressionStream("gzip"));
+  return await new Response(inflated).text();
+}
+
 /** List a directory in the engine repo. */
 export async function listDir(token, owner, path, ref = "main") {
   try {
