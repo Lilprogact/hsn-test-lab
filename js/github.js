@@ -9,6 +9,7 @@ export const FIRM_WORKFLOW = "firm-cycle.yml";
 export const SETTINGS_WORKFLOW = "save-settings.yml";
 export const DATA_WORKFLOW = "data-check.yml";
 export const MT5_WORKFLOW = "data-mt5.yml";
+export const SETUP_WORKFLOW = "setup-check.yml";
 
 export class GitHubError extends Error {
   constructor(message, status, kind) {

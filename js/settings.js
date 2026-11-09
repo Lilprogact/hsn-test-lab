@@ -104,10 +104,40 @@ export class SettingsView {
     this.feedEl = h("div", {}, h("p", { class: "muted" }, "Loading…"));
     const feedCard = card("VPS feed (read-only, weekly release)", this.feedEl,
       h("p", { class: "help" }, "The VPS publishes one GitHub Release a week on Lilprogact/hsn-vps-feed (prices, indicator lines, signals, results + a manifest with checksums). The Data check reads the latest release with a read-only token (VPS_FEED_READ_TOKEN in the engine's secrets), verifies every checksum, imports the alerts and the research, and only catalogues the Vantage prices — never a results source. Nothing can write back."));
-    this.root.replaceChildren(tokenCard, pwCard, limitsCard, usageCard, dataCard, mt5Card, feedCard, misc);
+    this.setupEl = h("div", {}, h("p", { class: "muted" }, "Loading…"));
+    const setupCard = card("Start-up checklist", this.setupEl,
+      h("div", { class: "row" }, h("button", { class: "secondary small", onclick: async () => { try { await gh.dispatch(state.token, state.owner, gh.SETUP_WORKFLOW, {}); alert("Checking… reload this page in about a minute."); } catch (e) { alert(e.message); } } }, "Re-check now")),
+      h("p", { class: "help" }, "Only yes / no per secret is ever recorded, never a value."));
+    this.root.replaceChildren(setupCard, tokenCard, pwCard, limitsCard, usageCard, dataCard, mt5Card, feedCard, misc);
     this.loadUsage();
     this.loadMt5();
     this.loadFeed();
+    this.loadSetup();
+  }
+
+  async loadSetup() {
+    if (!state.token) return;
+    try {
+      const s = await gh.getJson(state.token, state.owner, "status/setup.json");
+      if (!s) { this.setupEl.replaceChildren(h("p", { class: "muted" }, "No check yet — press Re-check now.")); return; }
+      const sec = s.secrets || {}, d = s.data || {}, f = s.firm || {};
+      const ok = (v) => badge(v ? "yes" : "no", v ? "good" : "bad");
+      const gold = d.XAUUSD || {};
+      const rows = [
+        ["Site token saved on this device", ok(vault.hasToken()), "Settings → GitHub token"],
+        ["FOREX.com MT5 login secrets (3)", ok(sec.forexcom_mt5_login), "engine → Settings → Secrets: FOREXCOM_MT5_LOGIN / _PASSWORD (investor) / _SERVER"],
+        ["Gold 1-minute history in the engine", gold.bars ? badge(`${num(gold.bars, 0)} bars · ${(gold.first_bar || "").slice(0, 10)} → ${(gold.last_bar || "").slice(0, 10)}${gold.kind === "tv" ? " · TRIAL (exports)" : ""}`, "good") : badge("none", "bad"), "Settings → Export FOREX.com history now"],
+        ["NAS100 history", (d.NAS100 || {}).bars ? badge(`${num(d.NAS100.bars, 0)} bars`, "good") : badge("none", "warn"), "needs the right FOREX.com symbol name"],
+        ["GBP/USD history (for the £ maths)", (d.GBPUSD || {}).bars ? badge(`${num(d.GBPUSD.bars, 0)} bars`, "good") : badge("none — fixed rate used if set", "warn"), ""],
+        ["TradingView exports + match check", s.tv_exports ? badge(`${s.tv_exports} files · match ${s.match_check?.passes ? "passes" : "not yet"}`, s.match_check?.passes ? "good" : "warn") : badge("no exports", "warn"), "proves the port = your indicator"],
+        ["Anthropic API key (agents think)", ok(sec.anthropic_api_key || sec.claude_oauth_token), "engine → Settings → Secrets: ANTHROPIC_API_KEY"],
+        ["VPS feed read-only token", ok(sec.vps_feed_read_token), "optional: VPS_FEED_READ_TOKEN (alerts, research)"],
+        ["HSN Capital", f.exists ? badge(`${f.agents} agents · cycle ${f.cycle} · ${f.paused ? "PAUSED" : "running"}`, f.paused ? "warn" : "good") : badge("not opened", "warn"), "CEO's office → Resume the firm"],
+        ["Runs finished", badge(`${s.runs?.done ?? 0} (Waves: ${s.runs?.waves_done ?? 0})`, ""), "run one Backtest → Waves rules for the agents' benchmark"],
+      ];
+      this.setupEl.replaceChildren(h("p", { class: "muted" }, `checked ${ukDateTime(s.checked_at)}`),
+        table(["What", "State", "Where"], rows.map(([w, st, where]) => ({ What: w, State: st, Where: where }))));
+    } catch (e) { this.setupEl.replaceChildren(h("p", { class: "error" }, e.message)); }
   }
 
   async loadFeed() {
