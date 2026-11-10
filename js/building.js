@@ -17,7 +17,7 @@ export const LEVEL_COLORS = { 1: "#5aa9ff", 2: "#3fd1c9", 3: "#35d07f", 4: "#f5b
 export const BAR_COLORS = { day: "#35d07f", pips: "#f5b942", rr: "#b784ff" };
 const LEVEL_NAMES = { 1: "Analysts", 2: "Associates", 3: "Vice Presidents", 4: "Directors", 5: "Managing Directors" };
 const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-const CELL_H = 76, HEAD_H = 20, ROOM_H = HEAD_H + CELL_H + 4, LABEL_H = 22;
+const CELL_H = 86, HEAD_H = 20, ROOM_H = HEAD_H + CELL_H + 4, LABEL_H = 22;      // 86: headroom for two heights of status bubble above the desks
 const WORKING = new Set(["thinking", "researching", "coding", "testing"]);
 const STEP = { tested: 0.14, thinking: 0.1, coded: 0.3, meeting_start: 1.6, meeting: 1.2, challenge_start: 1.6, challenge_failed: 0.6, audit_start: 1.4,
   audit_failed: 0.9, battle: 0.9, level_up: 3.4, swapped_down: 3.0, transfer: 1.6, rotation: 0.6, solo_passed_no_seat: 0.6, data_update: 0.3, turn_failed: 0.1,
@@ -112,7 +112,7 @@ export class Building {
   seatPos(g, i) {
     const r = g.rect; if (!r) return { x: this.liftW + 20, y: this.groundY - 10, cw: 30, cx: 0 };
     const cw = (r.w - 6) / 5, cx = r.x + 3 + i * cw;
-    return { x: cx + cw / 2, y: r.y + HEAD_H + 40, cw, cx, top: r.y + HEAD_H };
+    return { x: cx + cw / 2, y: r.y + HEAD_H + 50, cw, cx, top: r.y + HEAD_H };
   }
   home(id) { const a = this.agents.get(id); const g = a && this.groups.get(a.group); if (!g) return null; const i = g.seats.indexOf(id); return i < 0 ? null : this.seatPos(g, i); }
   spot(room, i) {
@@ -491,12 +491,14 @@ export class Building {
     let text = a.chip ? a.chip.text : (a.status && a.status !== "idle" && (!a.away || !a.walking) ? words[a.status] || a.status : "");
     if (!text) return;
     if (!a.chip && a.away) { const mates = [...this.agents.values()].filter((x) => x.away && (a.away.huddle ? x.away.huddle && x.group === a.group : x.away.room === a.away.room)); if (mates[0] !== a) return; }   // one bubble per gathering
-    if (!a.chip && a.status === "waiting_audit") { const g = this.groups.get(a.group); if (g && g.seats.find((id) => this.agents.get(id)?.status === "waiting_audit") !== a.id) return; }
+    // a whole group waiting for the Audit desk, or sitting its challenge together, shares one bubble
+    const together = a.status === "waiting_audit" || (a.status === "testing" && /challenge/.test(a.detail || "") && !/own/.test(a.detail || ""));
+    if (!a.chip && together) { const g = this.groups.get(a.group); if (g && g.seats.find((id) => { const x = this.agents.get(id); return x && x.status === a.status && x.detail === a.detail; }) !== a.id) return; }
     text = text.length > 26 ? text.slice(0, 25) + "…" : text;
     c.font = `600 9px ${FONT}`;
     const tw = c.measureText(text).width + 8, home = this.home(a.id), seated = home && !a.away && !a.walking;
     const seat = seated ? (this.groups.get(a.group)?.seats.indexOf(a.id) ?? 0) : 0;
-    let bx = clamp(a.x - tw / 2, this.liftW + 2, this.W - tw - 2), by = a.y - (seated ? 38 + (seat % 2) * 9 : 40);      // neighbours' bubbles sit at two heights
+    let bx = clamp(a.x - tw / 2, this.liftW + 2, this.W - tw - 2), by = a.y - (seated ? 38 + (seat % 2) * 12 : 40);     // neighbours' bubbles sit at two heights
     if (a.chip) { const age = this.clock - a.chip.born; by -= Math.min(8, age * 10); }
     c.fillStyle = a.chip ? a.chip.color : "rgba(230,240,234,.94)"; c.fillRect(bx, by, tw, 12);
     c.fillStyle = "#06130c"; c.fillText(text, bx + 4, by + 9);
