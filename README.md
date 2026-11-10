@@ -29,11 +29,14 @@ could only start workflows and read results, never change code. The site tells y
 * **Paper** — the VPS paper desk's live snapshot (every 5 minutes): positions, today's pips and money, equity,
   alerts acted on or skipped with the reason, the backtest check, and "Paper testing paused" with the last alert and
   price times whenever anything stops arriving. Up to 5 paper strategies, each with its own balance and money plan.
-* **HSN Capital** — the building (original art; every movement is a real event), the firm page (staff pyramid,
-  leaderboard by Month Score, Ideas Board, minutes, reports, memos, level-ups and swaps, budget meters, data
-  coverage) and the CEO's office (open any agent's file, ask anyone a question answered from their real file, set
-  the monthly focus, commend, approve or reject the Head of Trading's memo, pause the firm, run a cycle now).
-* **Runs** — every past run and what GitHub is running right now.
+* **HSN Capital** — the building (original art): all 100 agents at their own desks, coloured by level with a level
+  number, a mood face and three bars for their progress to the next level (Day Score, pips, risk to reward). Nothing
+  moves unless something real happened: the live status of a running cycle, or a finished cycle's real events
+  (**Replay**): typing, result chips, meetings, the Audit desk, transfers, the lift. Tap a desk for that agent's file
+  (level, how it got there, rules in plain English, real results, group, mood, research notes, code) or a room for its
+  group and its challenge played day by day on the real candles. Below it: the Staff grid (a tile per agent), the firm
+  page (staff pyramid, floors and their challenges, budget meters, leaderboard, Ideas Board, events, minutes,
+  discussions, reports, memos), how the agents research and code, and the CEO's office.
 * **Settings** — token, password, budgets and limits, HSN Capital's size and budgets, Actions minutes and AI
   costs this month, data coverage, the TradingView match check, animations on/off.
 

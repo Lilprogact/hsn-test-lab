@@ -6,6 +6,7 @@ export function h(tag, attrs = {}, ...children) {
   for (const [k, v] of Object.entries(attrs || {})) {
     if (v === null || v === undefined || v === false) continue;
     if (k === "class") el.className = v;
+    else if (k === "style") el.style.cssText = String(v);  // through the CSSOM: a style="" attribute would be blocked by the strict CSP
     else if (k === "html") el.innerHTML = v;              // only for trusted templates built here
     else if (k.startsWith("on") && typeof v === "function") el.addEventListener(k.slice(2), v);
     else if (k === "dataset") Object.assign(el.dataset, v);

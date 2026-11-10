@@ -121,23 +121,28 @@ export function histogram(canvas, bins, real, { unit = "£" } = {}) {
   }
 }
 
-/** Heatmap grid: rows x cols with values; render into an HTML container (not canvas) for tap-ability. */
-export function heatmapHtml(cells, { rows = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], cols = 24 } = {}) {
+/** Heatmap grid: rows x cols with values, as DOM nodes (not canvas) so cells can be tapped. Colours are set through
+ *  the CSSOM: a style="" attribute in an HTML string would be blocked by the site's strict Content Security Policy. */
+export function heatmap(cells, { rows = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], cols = 24 } = {}) {
   const map = new Map(cells.map((c) => [`${c.weekday}-${c.hour}`, c]));
   const vals = cells.map((c) => c.pnl).filter(Number.isFinite);
   const maxAbs = Math.max(1, ...vals.map(Math.abs));
-  let html = `<div class="heat"><div class="lab"></div>${Array.from({ length: cols }, (_, i) => `<div class="lab">${i}</div>`).join("")}`;
+  const div = (cls, text = "") => { const el = document.createElement("div"); if (cls) el.className = cls; if (text !== "") el.textContent = String(text); return el; };
+  const grid = div("heat");
+  grid.append(div("lab"), ...Array.from({ length: cols }, (_, i) => div("lab", i)));
   rows.forEach((r, ri) => {
-    html += `<div class="lab">${r}</div>`;
+    grid.append(div("lab", r));
     for (let c = 0; c < cols; c++) {
-      const cell = map.get(`${ri}-${c}`);
-      if (!cell) { html += `<div style="background:#101c16"></div>`; continue; }
+      const cell = map.get(`${ri}-${c}`), el = div("");
+      if (!cell) { el.style.background = "#101c16"; grid.append(el); continue; }
       const a = Math.min(1, Math.abs(cell.pnl) / maxAbs) * 0.85 + 0.15;
-      const bg = cell.pnl >= 0 ? `rgba(53,208,127,${a})` : `rgba(255,92,92,${a})`;
-      html += `<div style="background:${bg}" title="${r} ${c}:00 UK: £${fmt(cell.pnl)} over ${cell.n} sets, avg R ${cell.avg_r ?? "—"}">${cell.n}</div>`;
+      el.style.background = cell.pnl >= 0 ? `rgba(53,208,127,${a})` : `rgba(255,92,92,${a})`;
+      el.title = `${r} ${c}:00 UK: £${fmt(cell.pnl)} over ${cell.n} sets, avg R ${cell.avg_r ?? "—"}`;
+      el.textContent = String(cell.n);
+      grid.append(el);
     }
   });
-  return html + "</div>";
+  return grid;
 }
 
 /** Candles with optional trade markers. data: {t:[],o:[],h:[],l:[],c:[]} slice; trades: [{entryIdx, exitIdx, dir, entry, sl, tp, exit}] */

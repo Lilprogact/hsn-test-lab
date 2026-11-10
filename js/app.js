@@ -125,7 +125,7 @@ function renderTrialNotice() {
   const t = trialMode();
   const cov = state.coverage?.symbols?.XAUUSD;
   if (!cov || !cov.months) {
-    el.textContent = "No price data in the engine yet. Export FOREXCOM:XAUUSD from TradingView (indicator on, ISO time, UTC) and upload it to hsn-test-lab-engine/data/exports/, or install the VPS data job. Nothing can run until then.";
+    el.textContent = "No price data in the engine yet. Add the FOREX.com MT5 read-only (investor) login as three secrets in hsn-test-lab-engine, then Settings → Export FOREX.com history now. TradingView exports in data/exports/ are for the match check. Nothing can run until then.";
     el.hidden = false; return;
   }
   if (t.trial) { el.textContent = `TRIAL MODE — results are provisional: ${t.reason}`; el.hidden = false; }
@@ -193,6 +193,7 @@ export function liveText(live) {
   if (!live) return "";
   const bits = [live.stage];
   if (live.percent !== undefined) bits.push(`${live.percent}%`);
+  if (live.trades !== undefined) bits.push(`${live.trades} trades so far · ${Math.round(live.pips || 0).toLocaleString("en-GB")} pips · ${live.pnl_gbp < 0 ? "−" : ""}£${Math.abs(Math.round(live.pnl_gbp || 0)).toLocaleString("en-GB")}${live.at ? " · at " + String(live.at).slice(0, 10) : ""}`);
   if (live.runs_done !== undefined) bits.push(`run ${live.runs_done}/${live.runs_total}`);
   if (live.turns_done !== undefined) bits.push(`${live.turns_done}/${live.turns} agents thought`);
   if (live.elapsed_s !== undefined) bits.push(`${Math.round(live.elapsed_s / 60)} min`);

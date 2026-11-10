@@ -2,7 +2,7 @@
 import * as gh from "./github.js";
 import { state, startRun, liveText, trialMode } from "./app.js";
 import { h, card, stat, table, badge, field, select, input, chips, money, num, pct, signed, download, mdLite, openModal } from "./ui.js";
-import { lineChart, barChart, histogram, heatmapHtml } from "./charts.js";
+import { lineChart, barChart, histogram, heatmap } from "./charts.js";
 import { Replay } from "./replay.js";
 
 const TIMEFRAMES = ["1M", "3M", "5M", "15M", "30M", "45M", "1H", "2H", "3H", "4H"];
@@ -218,7 +218,7 @@ export class BacktestView {
       this.splitTable("By market type (own timeframe)", b.by_market_type), this.splitTable("By 1H market type", b.by_market_type_1h), this.splitTable("Quiet vs not", b.by_quiet),
       this.splitTable("15M / 1H / 4H agreement at entry", b.by_htf_agreement), this.splitTable("By session (UK)", b.by_session), this.splitTable("By timeframe", b.by_timeframe),
       this.splitTable("By trigger (plan)", b.by_plan), this.splitTable("By direction", b.by_direction), this.splitTable("By year", b.by_year),
-      h("h3", {}, "Session heatmap (UK weekday × hour, £ and number of sets)"), h("div", { html: heatmapHtml(b.session_heatmap || []) }));
+      h("h3", {}, "Session heatmap (UK weekday × hour, £ and number of sets)"), heatmap(b.session_heatmap || []));
     wrap.append(splitCard);
     // sideways
     const sb = b.sideways_bleed || {}, st = b.sideways_stress_test || {};
