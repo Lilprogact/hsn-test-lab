@@ -26,9 +26,8 @@ could only start workflows and read results, never change code. The site tells y
   confirm or correct, and only then can the strategy run.
 * **Million** — the challenge played from every start date: % reaching £1M, median finish, stop line and blow-ups,
   best/worst/typical runs, the day-by-day table with lots and pips needed, the luck check and the verdict.
-* **Paper** — the VPS paper desk's live snapshot (every 5 minutes): positions, today's pips and money, equity,
-  alerts acted on or skipped with the reason, the backtest check, and "Paper testing paused" with the last alert and
-  price times whenever anything stops arriving. Up to 5 paper strategies, each with its own balance and money plan.
+* **Paper** — parked (Hassan, 8 Nov 2026: backtests and HSN Capital first). The page says so. When it returns it is
+  virtual books only, on demo accounts opened just for the Test Lab; nothing of it runs on the trading VPS.
 * **HSN Capital** — the building (original art): all 100 agents at their own desks, coloured by level with a level
   number, a mood face and three bars for their progress to the next level (Day Score, pips, risk to reward). Nothing
   moves unless something real happened: the live status of a running cycle, or a finished cycle's real events
