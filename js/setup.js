@@ -380,7 +380,7 @@ export class SetupView {
     this.lineMeta.textContent = doc && (!pending || doc.request_id === pending.request) ? `Checked ${ukDateTime(doc.updated_at)}${login?.checked_at ? ` · FOREX.com ${ukDateTime(login.checked_at)}` : ""}` : "";
     const p = r.parts || {};
     const allOk = p.forexcom?.state === "ok" && p.anthropic?.state === "ok" && p.feed?.state === "ok";
-    this.nextEl.replaceChildren(allOk ? h("p", { class: "good" }, "All three work. The engine is now downloading the FOREX.com price history (10 to 50 minutes the first time; Settings shows it arrive). When you want the company to start: HSN Capital → CEO's office → Resume.") : "");
+    this.nextEl.replaceChildren(allOk ? h("p", { class: "good" }, "All three work. The engine is now downloading the FOREX.com price history (10 to 50 minutes the first time; Settings shows it arrive). When it has arrived, the Start button on the HSN Capital page unlocks.") : "");
     if (pending && r.done) { writeFlag({ ...flag, requestDone: true }); this.stopPolling(); if (this.checkBtn) this.checkBtn.disabled = false; }
   }
 

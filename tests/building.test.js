@@ -110,3 +110,29 @@ test("live mode only animates events that arrive after the page was opened", () 
   assert.deepEqual(b.queue.map((e) => e.agent), ["A003"]);
   b.destroy();
 });
+
+test("result chips speak in pips and win rate, the Engine's search is marked, and the top desks carry a mark", () => {
+  const b = new Building(canvasStub(1150), { animations: true });
+  const f = firm();
+  b.setStars({ pips: "A007", win: "A012" });
+  b.setData(f, null);
+  assert.deepEqual(b.stars, { pips: "A007", win: "A012" });
+  b.apply({ at: "t1", kind: "tested", agent: "A001", pips: 412.4, win: 57.6, month_score: 30 }, true);
+  assert.equal(b.agents.get("A001").chip.text, "+412p 58%", "an agent's own idea: pips and win rate, straight from the Engine");
+  b.apply({ at: "t2", kind: "tested", agent: "A002", pips: -80.2, win: 31, by: "engine search", what: "only the London session" }, true);
+  assert.equal(b.agents.get("A002").chip.text, "⚙ -80p 31%", "the Engine's own search carries its own mark");
+  assert.equal(b.agents.get("A002").chip.color, "#ff5c5c");
+  b.apply({ at: "t3", kind: "tested", agent: "A003", month_score: 12.3 }, true);
+  assert.equal(b.agents.get("A003").chip.text, "+12", "an older record without pips still shows its Month Score");
+  b.apply({ at: "t4", kind: "coded", agent: "A004", name: "ema_cross", what: "strategy" }, true);
+  assert.equal(b.agents.get("A004").chip.text, "</> own strategy");
+  b.apply({ at: "t5", kind: "coded", group: "G02", name: "team_trend", what: "team strategy" }, true);
+  assert.equal(b.agents.get("A006").chip.text, "</> team code", "a team's hand-in shows at the group's first desk");
+  assert.ok(b.flashes.some((x) => x.gid === "G02"), "and its room flashes");
+  b.apply({ at: "t6", kind: "tested", group: "G02", pips: 50, win: 60, by: "first test", strategy: "S0002" }, true);
+  assert.equal(b.agents.get("A006").chip.text, "+50p 60%", "the first test of a team's code shows there too");
+  b.setStars(null);
+  assert.deepEqual(b.stars, { pips: null, win: null });
+  b.draw();
+  b.destroy();
+});

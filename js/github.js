@@ -24,7 +24,7 @@ function classify(status, body) {
   const message = (body && body.message) || `GitHub returned ${status}`;
   if (status === 401) return new GitHubError("Your GitHub token was rejected. It may have expired or been revoked.", status, "token");
   if (status === 403 && /rate limit/i.test(message)) return new GitHubError("GitHub's rate limit was hit. Wait a few minutes and try again.", status, "rate");
-  if (status === 403) return new GitHubError("Your token doesn't have permission for that. It needs Actions: read and write, and Contents: read-only on hsn-test-lab-engine.", status, "forbidden");
+  if (status === 403) return new GitHubError("The site's GitHub token is not allowed to do that. It needs two permissions on hsn-test-lab-engine: Actions (Read and write) and Contents (Read-only). To add the missing one: github.com/settings/personal-access-tokens → tap the site's token → Edit → Permissions → Add permissions → tick it → Update. The token itself stays the same.", status, "forbidden");
   if (status === 404) return new GitHubError("Not found. Check that hsn-test-lab-engine exists and the token can see it.", status, "notfound");
   return new GitHubError(message, status, "other");
 }
@@ -74,6 +74,17 @@ export async function whoami(token) {
 export async function checkEngineAccess(token, owner) {
   const { data } = await api(token, `/repos/${owner}/${ENGINE_REPO}`);
   return { name: data.full_name, private: data.private, defaultBranch: data.default_branch };
+}
+
+/** Which of the two permissions the site needs does this token really have? Read one small file (Contents) and list
+ *  the workflows (Actions). Never throws for a missing permission: it reports it. */
+export async function checkPermissions(token, owner) {
+  const out = { contents: null, actions: null };
+  for (const [key, path] of [["contents", `/repos/${owner}/${ENGINE_REPO}/contents/config.json?ref=main`], ["actions", `/repos/${owner}/${ENGINE_REPO}/actions/workflows?per_page=1`]]) {
+    try { await api(token, path); out[key] = true; }
+    catch (error) { if (error.kind === "forbidden") out[key] = false; else if (error.kind === "notfound" && key === "contents") out[key] = true; else throw error; }
+  }
+  return out;
 }
 
 export async function dispatch(token, owner, workflow, inputs, ref = "main") {

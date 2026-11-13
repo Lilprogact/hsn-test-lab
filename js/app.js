@@ -46,7 +46,8 @@ function showLock() {
   const st = vault.state();
   createForm.hidden = st !== "no_password";
   unlockForm.hidden = st === "no_password";
-  setTimeout(() => (st === "no_password" ? document.getElementById("create-pass-1") : document.getElementById("unlock-pass")).focus(), 50);
+  // put the cursor in the password box, unless the person is already typing in one of the lock's boxes
+  setTimeout(() => { if (!lockEl.contains(document.activeElement)) (st === "no_password" ? document.getElementById("create-pass-1") : document.getElementById("unlock-pass")).focus(); }, 50);
 }
 
 async function unlocked() {

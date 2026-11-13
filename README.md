@@ -28,14 +28,36 @@ could only start workflows and read results, never change code. The site tells y
   best/worst/typical runs, the day-by-day table with lots and pips needed, the luck check and the verdict.
 * **Paper** — parked (Hassan, 8 Nov 2026: backtests and HSN Capital first). The page says so. When it returns it is
   virtual books only, on demo accounts opened just for the Test Lab; nothing of it runs on the trading VPS.
-* **HSN Capital** — the building (original art): all 100 agents at their own desks, coloured by level with a level
-  number, a mood face and three bars for their progress to the next level (Day Score, pips, risk to reward). Nothing
-  moves unless something real happened: the live status of a running cycle, or a finished cycle's real events
-  (**Replay**): typing, result chips, meetings, the Audit desk, transfers, the lift. Tap a desk for that agent's file
-  (level, how it got there, rules in plain English, real results, group, mood, research notes, code) or a room for its
-  group and its challenge played day by day on the real candles. Below it: the Staff grid (a tile per agent), the firm
-  page (staff pyramid, floors and their challenges, budget meters, leaderboard, Ideas Board, events, minutes,
-  discussions, reports, memos), how the agents research and code, and the CEO's office.
+* **HSN Capital** — one **Start** button, then the firm works in shifts at the pace chosen in the Start dialog (every
+  6 hours, 3 hours, hourly or non-stop) inside the two monthly limits set there (AI budget, GitHub minutes). Start
+  waits until there is price history and says what is missing; **Pause** stops it. A line beside the button says what
+  the firm is doing now: live figures while a shift runs (ideas tested, the Engine's own search, code read and handed
+  in, when progress was last saved), otherwise when the next shift is due. The Start dialog and the CEO's office say,
+  live as the pace or the minutes limit is changed, what they give: how many shifts are left this month and how long
+  each may work, or the day the month's minutes would run out. The firm paces itself (each shift gets an even share
+  of the minutes left) and that line is the engine's own sum (`js/firmlogic.js` `shiftPlan` = the engine's
+  `scripts/firm_schedule.py` `shift_plan`; both are tested against the same table of cases). Five pages:
+  * **Company** — a scoreboard (most pips, best win rate with a minimum number of trades and only for ideas in
+    profit, ideas tested, strategy code in use, moves up, AI and minutes used), then the building (original art): all
+    100 agents at their own desks, coloured by level with a level number, a mood face and four bars for their progress
+    to the next level (months in profit, pips, risk to reward, win rate); a star marks the agent with the most pips and
+    a ring the best win rate. Nothing moves unless something real happened: the live status of a running shift, or
+    between shifts a **replay of the last shift's real events on a loop**, always labelled as a replay (it can be
+    switched off under Replay options). Under it, "What just happened": the latest real events in plain words. Tap a
+    desk for that agent's file or a room for its group and its challenge played day by day on the real candles.
+  * **People** — a tile per agent: level, best pips and win rate, the four bars; sort by floor, pips, win rate,
+    progress, Month Score or name.
+  * **Rules & code** — the strategy code agents and teams wrote themselves (tap one to read the code, how the
+    sandbox judged it and its real results; "signals" are the trades the code itself opens over the whole history,
+    "trades" its best tested result), each team's own rules as agreed in its meeting, and the coded features.
+  * **Records** — staff pyramid, floors and their challenges, budget meters, the leaderboard (pips and win rate
+    beside the Month Score), Ideas Board, events, minutes, discussions, reports, memos.
+  * **CEO's office** — ask any agent or manager a question, set the monthly focus, commend, decide on the Head of
+    Trading's memo, and how the firm works: the pace, the two monthly limits (changeable while it works), whether
+    agents may write their own strategy code, the Engine's own search, and whether the win rate is a pass mark for
+    moving up (off by default: shown and ranked on only).
+  When the site's token cannot read the engine (a token made without Contents: Read-only can start jobs but read
+  nothing), the page says which permission is missing and how to add it instead of showing an empty building.
 * **Settings** — token, password, budgets and limits, HSN Capital's size and budgets, Actions minutes and AI
   costs this month, data coverage, the TradingView match check, animations on/off.
 

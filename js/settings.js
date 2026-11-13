@@ -6,6 +6,11 @@ import { state, startSettingsWorkflow, loadShared, switchView } from "./app.js";
 import { ukDateTime } from "./clock.js";
 import { h, card, stat, table, badge, field, select, input, num, pct, money } from "./ui.js";
 
+function permissionWords(can) {
+  const missing = [can.contents === false ? "Contents (Read-only), which lets the site read results" : null, can.actions === false ? "Actions (Read and write), which lets the site start runs" : null].filter(Boolean);
+  return `The token is saved, but it is missing ${missing.join(" and ")}. On GitHub: github.com/settings/personal-access-tokens → tap this token → Edit → Permissions → Add permissions → tick it → Update. The token itself stays the same, so there is nothing to paste again.`;
+}
+
 export class SettingsView {
   constructor(root, { onTokenSaved }) { this.root = root; this.onTokenSaved = onTokenSaved; }
   onUnlock() {}
@@ -20,10 +25,12 @@ export class SettingsView {
       try {
         const who = await gh.whoami(t);
         await gh.checkEngineAccess(t, who.login);
+        const can = await gh.checkPermissions(t, who.login);
         await vault.setToken(t, { expiresAt: who.expiry || null, owner: who.login });
         token.value = "";
         await this.onTokenSaved();
         this.render();
+        if (can.contents === false || can.actions === false) alert(permissionWords(can));
       } catch (e) { alert(e.message); }
     } }, "Save token");
     const forget = h("button", { class: "danger", onclick: () => { if (confirm("Forget the token on this device?")) { vault.forgetToken(); state.token = null; this.render(); } } }, "Forget token");
@@ -31,7 +38,7 @@ export class SettingsView {
     const daysLeft = expiry ? Math.round((expiry - Date.now()) / 86400000) : null;
     const tokenCard = card("GitHub token",
       h("p", { class: "help" }, "A fine-grained token for hsn-test-lab-engine only: Actions read and write (to start runs and read progress), Contents read-only (to read results), 90-day expiry. It is encrypted with your password and never leaves this device except to call api.github.com."),
-      vault.hasToken() ? h("p", {}, badge(`connected as ${meta.owner || "?"}`, "good"), " ", expiry ? badge(`expires ${ukDateTime(meta.expiresAt)}${daysLeft !== null && daysLeft <= 10 ? " — renew soon!" : ""}`, daysLeft !== null && daysLeft <= 10 ? "warn" : "") : badge("expiry unknown", "warn")) : h("p", { class: "warnc" }, "No token saved on this device."),
+      vault.hasToken() ? h("p", {}, badge(`connected as ${meta.owner || "?"}`, "good"), " ", expiry ? badge(`expires ${ukDateTime(meta.expiresAt)}${daysLeft !== null && daysLeft <= 10 ? " — renew soon!" : ""}`, daysLeft !== null && daysLeft <= 10 ? "warn" : "") : badge("expiry: shown on GitHub, not here", ""), " ", (this.permEl = h("span", {}))) : h("p", { class: "warnc" }, "No token saved on this device."),
       h("div", { class: "row" }, token, saveTok, vault.hasToken() ? forget : null),
       h("details", {}, h("summary", {}, "How to make the token"), h("ol", {}, h("li", {}, "GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token."), h("li", {}, "Repository access: Only select repositories → hsn-test-lab-engine."), h("li", {}, "Permissions → Repository: Actions = Read and write; Contents = Read-only; Metadata = Read-only (automatic)."), h("li", {}, "Expiration: 90 days. Generate, copy, paste here."))));
     const pw1 = input("password", "", { placeholder: "current" }), pw2 = input("password", "", { placeholder: "new (6+ characters)" });
@@ -50,21 +57,20 @@ export class SettingsView {
     const firm = cfg.firm || {};
     const agents = input("number", firm.agents ?? 100, { min: 5, max: 200, step: 5 });
     const fmodel = select([["claude-sonnet-5-5", "Claude Sonnet 5.5 (default)"], ["claude-haiku-5-5", "Claude Haiku 5.5 (more turns per $)"], ["claude-opus-5-5", "Claude Opus 5.5"]], firm.model || "claude-sonnet-5-5");
-    const cycleH = input("number", firm.cycle_hours ?? 6, { min: 1, max: 24 });
     const fmin = input("number", firm.monthly_minutes_budget ?? 1200, { min: 0, step: 50 });
     const fapi = input("number", firm.monthly_api_budget_usd ?? 60, { min: 0, step: 5 });
     const vault_m = input("number", firm.vault_months ?? 2, { min: 1, max: 6 });
     const saveCfg = h("button", { class: "primary", onclick: async () => {
       const payload = { monthly_budget_usd: +budget.value, max_runs_per_day: +runsDay.value, gbpusd_fixed: gbp.value ? +gbp.value : null,
         default_spread: { XAUUSD: +spreadG.value, NAS100: +spreadN.value }, leverage: +leverage.value, summary_model: model.value, nas100_symbol: nas.value,
-        firm: { agents: +agents.value, model: fmodel.value, cycle_hours: +cycleH.value, monthly_minutes_budget: +fmin.value, monthly_api_budget_usd: +fapi.value, vault_months: +vault_m.value } };
+        firm: { agents: +agents.value, model: fmodel.value, monthly_minutes_budget: +fmin.value, monthly_api_budget_usd: +fapi.value, vault_months: +vault_m.value } };
       try { await startSettingsWorkflow(payload); alert("Saved through the settings workflow (takes about a minute to land)."); setTimeout(() => loadShared(), 70000); } catch (e) { alert(e.message); }
     } }, "Save settings");
     const limitsCard = card("Budgets and limits", h("div", { class: "group form" },
       field("Monthly API budget for this site ($)", budget, "Car Finder has its own $100"), field("Your runs per day", runsDay), field("Summary / codegen model", model), field("Leverage cap", leverage),
       field("Fixed GBP/USD (labelled assumption)", gbp), field("Default spread gold ($)", spreadG, "used only where no spread is recorded"), field("Default spread NAS100 (pts)", spreadN), field("FOREX.com Nasdaq symbol", nas)),
-      h("h3", {}, "HSN Capital"), h("div", { class: "group form" }, field("Agents", agents), field("Model (same for every agent)", fmodel), field("Cycle every (hours)", cycleH), field("Actions minutes budget / month", fmin), field("API budget / month ($)", fapi), field("Vault months (locked for floor 4)", vault_m)),
-      h("div", { class: "row" }, saveCfg, h("span", { class: "help" }, "The schedule itself (every 6 h) is set in the workflow file; this paces the budget within it.")));
+      h("h3", {}, "HSN Capital"), h("div", { class: "group form" }, field("Agents", agents), field("Model (same for every agent)", fmodel), field("Actions minutes budget / month", fmin), field("API budget / month ($)", fapi), field("Vault months (locked for floor 4)", vault_m)),
+      h("div", { class: "row" }, saveCfg, h("span", { class: "help" }, "Budgets apply from the firm's next shift. How often a shift runs, and Start / Pause, are on the HSN Capital page.")));
 
     const mins = state.minutes || {};
     const usageCard = card("Minutes and AI costs this month", h("div", { class: "stats" },
@@ -111,9 +117,21 @@ export class SettingsView {
       h("p", { class: "help" }, "Only yes / no per secret is ever recorded, never a value. The logins themselves go in on the One-time setup page: sealed in this browser and sent straight to GitHub's secrets."));
     this.root.replaceChildren(setupCard, tokenCard, pwCard, limitsCard, usageCard, dataCard, mt5Card, feedCard, misc);
     this.loadUsage();
+    this.loadPermissions();
     this.loadMt5();
     this.loadFeed();
     this.loadSetup();
+  }
+
+  /** Does the saved token really have both permissions? (A token without Contents can start jobs but read nothing.) */
+  async loadPermissions() {
+    if (!state.token || !this.permEl) return;
+    try {
+      const can = await gh.checkPermissions(state.token, state.owner);
+      const bad = can.contents === false || can.actions === false;
+      this.permEl.replaceChildren(badge(bad ? "a permission is missing" : "both permissions in place", bad ? "bad" : "good"));
+      if (bad) this.permEl.after(h("p", { class: "warnc" }, permissionWords(can)));
+    } catch { /* the page's own messages cover a token that does not work at all */ }
   }
 
   async loadSetup() {
@@ -133,7 +151,7 @@ export class SettingsView {
         ["TradingView exports + match check", s.tv_exports ? badge(`${s.tv_exports} files · match ${s.match_check?.passes ? "passes" : "not yet"}`, s.match_check?.passes ? "good" : "warn") : badge("no exports", "warn"), "proves the port = your indicator"],
         ["Anthropic API key (agents think)", ok(sec.anthropic_api_key || sec.claude_oauth_token), "One-time setup: ANTHROPIC_API_KEY"],
         ["VPS feed read-only token", ok(sec.vps_feed_read_token), "One-time setup: VPS_FEED_READ_TOKEN (alerts, research)"],
-        ["HSN Capital", f.exists ? badge(`${f.agents} agents · cycle ${f.cycle} · ${f.paused ? "PAUSED" : "running"}`, f.paused ? "warn" : "good") : badge("not opened", "warn"), "CEO's office → Resume the firm"],
+        ["HSN Capital", f.exists ? badge(`${f.agents} agents · shift ${f.cycle} · ${f.paused ? "not started / paused" : "working"}`, f.paused ? "warn" : "good") : badge("not opened", "warn"), "HSN Capital → Start the company"],
         ["Runs finished", badge(`${s.runs?.done ?? 0} (Waves: ${s.runs?.waves_done ?? 0})`, ""), "run one Backtest → Waves rules for the agents' benchmark"],
       ];
       this.setupEl.replaceChildren(h("p", { class: "muted" }, `checked ${ukDateTime(s.checked_at)}`),

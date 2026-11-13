@@ -1,17 +1,35 @@
-// Mode 4: HSN Capital — the building, the staff, the firm page and the CEO's office. Every number shown comes from
-// the engine's files (firm/firm.json, firm/leaderboard.json, firm/agents/<id>.json, firm/challenges/*.json,
-// firm/replays/*.json, the library, minutes, reports, memos). Nothing here makes a number up: where the Engine has
-// no result yet, the page says so.
+// Mode 4: HSN Capital. One Start button, then five pages: Company (the building, with every agent in it, moving only
+// when something real happened), People, Rules & code (what the agents wrote), Records and the CEO's office.
+// Every number shown comes from the engine's files (firm/firm.json, firm/leaderboard.json, firm/agents/<id>.json,
+// firm/challenges/*.json, firm/replays/*.json, the library, minutes, reports, memos) or, while a shift runs, from its
+// live status file. Nothing here makes a number up: where the Engine has no result yet, the page says so.
 import * as gh from "./github.js";
-import { state, startRun, liveText, trialMode } from "./app.js";
+import { state, startRun, liveText } from "./app.js";
 import { ukDateTime } from "./clock.js";
-import { h, card, stat, table, badge, field, select, input, money, num, pct, signed, openModal, mdLite } from "./ui.js";
+import { h, card, stat, table, badge, field, select, input, money, num, pct, signed, openModal, closeModal, mdLite } from "./ui.js";
 import { Building, LEVEL_COLORS, BAR_COLORS, isRunning } from "./building.js";
+import { PACES, nextShift, readiness, scoreboard, eventLine, tokenHelp, shiftPlan, shiftPlanWords, minutesUsedThisMonth } from "./firmlogic.js";
 import { ChallengeReplay } from "./replay.js";
 
 const LEVELS = { 1: "Analyst", 2: "Associate", 3: "Vice President", 4: "Director", 5: "Managing Director" };
+const CODE_ROOM = { original: "your indicator as the Engine runs it", original_pine: "your indicator's Pine code", chart_maths: "the chart maths it is built from", waves: "your Waves rules",
+  rules_engine: "how the Engine evaluates rules", price_model: "how prices are filled", challenges: "what each challenge checks" };
 const MOOD_FACE = { happy: "🙂", proud: "😌", frustrated: "😣", focused: "🧐", neutral: "😐", waiting: "⏳" };
 const tick = (ok) => h("span", { class: ok ? "good" : "bad" }, ok ? "✓" : "✗");
+/** A number box's value, or `fallback` when it is empty or not a number (so an empty box never saves a zero). */
+const boxNumber = (el, fallback) => (el.value.trim() !== "" && Number.isFinite(+el.value) && +el.value >= 0 ? +el.value : fallback);
+
+/** One live line under the pace and the minutes limit: what the engine will do with them (the same sum it uses). */
+function planLine(pace, mins, fallbackMins) {
+  const el = h("p", { class: "help plan-line", role: "status" });
+  const paint = () => {
+    const now = new Date(), used = minutesUsedThisMonth(state.minutes, now);
+    el.textContent = shiftPlanWords(shiftPlan(pace.value, used, boxNumber(mins, fallbackMins), now), now)
+      + (used > 0 ? ` (${num(used, 0)} GitHub minutes already used this month, as counted ${ukDateTime(state.minutes.checked_at)} UK.)` : "");
+  };
+  pace.addEventListener("change", paint); mins.addEventListener("input", paint); paint();
+  return el;
+}
 
 /** One labelled progress bar. `value` is the share of months (0-100) that meet the check. */
 function bar(label, pctValue, color, text, faded = false) {
@@ -27,7 +45,8 @@ function progressBars(p, { compact = false } = {}) {
   return h("div", { class: "pbars" },
     bar("Day Score", p.day?.pct, BAR_COLORS.day, compact ? `${p.day?.months_up}/${m}` : `${p.day?.months_up} of ${m} months in profit · avg ${signed(p.day?.avg, 1)} a day`, faded),
     bar("Pips", p.pips?.pct, BAR_COLORS.pips, compact ? `${p.pips?.months_hit}/${m}` : `${p.pips?.months_hit} of ${m} months at +${num(p.pips?.need, 0)} · avg ${num(p.pips?.avg, 0)} a month`, faded),
-    bar("Risk : reward", p.rr?.pct, BAR_COLORS.rr, compact ? `${p.rr?.months_hit}/${m}` : `${p.rr?.months_hit} of ${m} months at ${p.rr?.need} · avg ${num(p.rr?.avg, 2)}`, faded));
+    bar("Risk : reward", p.rr?.pct, BAR_COLORS.rr, compact ? `${p.rr?.months_hit}/${m}` : `${p.rr?.months_hit} of ${m} months at ${p.rr?.need} · avg ${num(p.rr?.avg, 2)}`, faded),
+    p.win && p.win.need != null ? bar("Win rate", p.win.pct, BAR_COLORS.win, compact ? `${p.win.months_hit}/${m}` : `${p.win.months_hit} of ${m} months at ${p.win.need}%+ · avg ${p.win.avg == null ? "—" : num(p.win.avg, 1) + "%"}${p.win.gate ? "" : " · target, not a pass mark"}`, faded) : null);
 }
 
 function story(x, nameOf) {
@@ -53,131 +72,263 @@ export class FirmView {
   constructor(root) {
     this.root = root;
     this.firm = null; this.live = null; this.board = null; this.building = null; this.timer = null;
+    this.setup = null; this.schedule = null; this.page = "company"; this.busy = "";
     this.filter = { floor: "all", sort: "floor", text: "" };
+    this.loop = localStorage.getItem("hsn.replayloop") !== "off";
   }
   onUnlock() {}
-  show() { this.load().then(() => this.schedule()); }
-  schedule() {
+  onLock() { this.stopLoop(); }
+  hide() { this.stopLoop(); }
+  show() { this.load().then(() => this.schedulePoll()); }
+  schedulePoll() {
     if (this.timer) clearTimeout(this.timer);
-    this.timer = setTimeout(async () => { if (!this.root.hidden && document.visibilityState !== "hidden") await this.refreshLive(); this.schedule(); }, isRunning(this.live) ? 15000 : 45000);
+    this.timer = setTimeout(async () => { if (!this.root.hidden && document.visibilityState !== "hidden") await this.refreshLive(); this.schedulePoll(); }, isRunning(this.live) ? 15000 : 45000);
   }
 
   async load() {
     if (!this.firm) this.root.replaceChildren(h("p", { class: "muted" }, "Loading HSN Capital…"));
     try {
-      const [firm, board, live] = await Promise.all([
-        gh.getJson(state.token, state.owner, "firm/firm.json"),
-        gh.getJson(state.token, state.owner, "firm/leaderboard.json"),
-        gh.getJson(state.token, state.owner, "status/firm_live.json", "live").catch(() => null),
+      const get = (path, ref) => gh.getJson(state.token, state.owner, path, ref);
+      const [firm, board, live, setup, schedule] = await Promise.all([
+        get("firm/firm.json"), get("firm/leaderboard.json"), get("status/firm_live.json", "live").catch(() => null),
+        get("status/setup.json").catch(() => null), get("status/firm_schedule.json").catch(() => null),
       ]);
-      this.firm = firm; this.board = board; this.live = live;
+      this.firm = firm; this.board = board; this.live = live; this.setup = setup; this.schedule = schedule;
       this.render();
-    } catch (e) { this.root.replaceChildren(h("p", { class: "error" }, e.message)); }
+    } catch (e) { this.renderProblem(e); }
+  }
+
+  /** The firm's files could not be read. Say what is wrong and exactly how to put it right. */
+  renderProblem(e) {
+    const help = tokenHelp(e);
+    this.root.replaceChildren(card("HSN Capital cannot be shown yet", h("p", { class: "error" }, help.title),
+      help.steps.length ? h("ol", { class: "steps" }, ...help.steps.map((x) => h("li", {}, x))) : null,
+      help.link ? h("p", {}, h("a", { href: help.link, target: "_blank", rel: "noopener noreferrer" }, "Open your GitHub tokens")) : null,
+      h("div", { class: "row" }, h("button", { class: "primary", onclick: () => this.load() }, "Try again"))));
   }
 
   async refreshLive() {
     try {
       const was = isRunning(this.live);
       this.live = await gh.getJson(state.token, state.owner, "status/firm_live.json", "live");
-      if (was && !isRunning(this.live)) { await this.load(); return; }          // the cycle has just finished: read its results
+      const now = isRunning(this.live);
+      if (was && !now) { await this.load(); return; }          // the shift has just finished: read its results
+      if (now && this.building?.mode === "replay") this.building.stopReplay(true);      // a real shift takes over from the replay
       this.building?.applyLive(this.live);
-      this.paintLive();
+      this.paintControl(); this.paintTicker();
     } catch { /* keep the last state */ }
   }
 
-  paintLive() {
-    if (!this.liveEl) return;
-    const l = this.live, f = this.firm;
-    if (isRunning(l)) {
-      const c = l.counters || {};
-      this.liveEl.replaceChildren(badge("LIVE", "good"), ` ${liveText(l)} · ${c.ideas_tested ?? 0} ideas tested, ${num(c.trades_tested, 0)} trades through the Engine, ${c.research_calls ?? 0} research lookups, ${c.challenges ?? 0} challenges (${c.challenges_passed ?? 0} passed)`
-        + (c.best ? ` · best so far ${c.best.name}: Month Score ${num(c.best.month_score, 1)}, ${num(c.best.pips, 0)} pips, ${money(c.best.pnl_gbp)}` : "") + ` · ${ukDateTime(l.updated_at)} UK`);
-    } else if (f?.paused) this.liveEl.textContent = f.cycle ? `The firm is paused. Everyone is at their desks; nothing moves until it is resumed (CEO's office, below).` : `The firm has not started yet (it opens paused). All ${Object.keys(f.agents || {}).length} agents are at their desks; movement begins with the first cycle after you press Resume in the CEO's office.`;
-    else this.liveEl.textContent = `No cycle is running right now. Last cycle ${f?.cycle ?? 0} finished ${f?.last_cycle?.finished_at ? ukDateTime(f.last_cycle.finished_at) + " UK" : "—"}. Replay it below, or wait for the next one.`;
+  // ── the Start strip: one button, and a plain line saying what the firm is doing right now ──────────────────────────
+  paintControl() {
+    if (!this.controlEl) return;
+    const f = this.firm, l = this.live, running = isRunning(l), ready = readiness(state, this.setup, f);
+    const c = l?.counters || {};
+    let button, line, sub = null;
+    if (this.busy) {
+      button = h("button", { class: "start-btn", disabled: true }, this.busy);
+      line = "Sent to GitHub. This takes about a minute; you can stay on this page.";
+    } else if (f.paused) {
+      button = h("button", { class: "start-btn go", disabled: ready.ok ? null : true, onclick: () => this.startDialog() }, f.cycle ? "▶ Start again" : "▶ Start the company");
+      line = !ready.ok ? ready.why : f.cycle ? `Paused after shift ${f.cycle}. Everything it learned is saved; Start carries on from there.`
+        : `Ready. All ${Object.keys(f.agents || {}).length} agents are at their desks; nothing moves until you press Start.`;
+      if (!ready.ok && ready.setup) sub = h("button", { class: "secondary small", onclick: () => { location.hash = "#setup"; location.reload(); } }, "Open Setup");
+    } else {
+      button = h("button", { class: "start-btn stop", onclick: () => this.pause() }, "⏸ Pause");
+      if (running) {
+        line = h("span", {}, badge("LIVE", "good"), ` shift ${l.cycle} · ${liveText(l)} · ${num(c.ideas_tested ?? 0, 0)} ideas tested`
+          + (c.engine_search ? ` (${num(c.engine_search, 0)} by the Engine's own search)` : "") + ` · ${num(c.trades_tested ?? 0, 0)} trades through the Engine`
+          + (c.code_read ? ` · ${c.code_read} looks at the code` : "") + (c.code_handed_in ? ` · ${c.code_handed_in} pieces of code handed in` : "")
+          + ` · ${c.challenges ?? 0} challenges (${c.challenges_passed ?? 0} passed)`);
+        sub = h("div", {}, h("div", { class: "progress shift-bar", role: "progressbar", "aria-valuenow": Math.round(l.percent || 0), "aria-valuemin": 0, "aria-valuemax": 100 }, h("div", { style: `width:${Math.max(2, Math.min(100, l.percent || 0))}%` })),
+          h("span", { class: "muted small" }, c.saved_at ? `Progress saved ${ukDateTime(c.saved_at)} UK (${c.saves} saves this shift)` : "Progress is saved every few minutes while it works."));
+      } else {
+        const nxt = nextShift(f.settings?.pace, this.schedule, new Date());
+        line = `Working in shifts, ${PACES[f.settings?.pace]?.words || PACES["6h"].words}. Shift ${f.cycle || 0} ${f.last_cycle?.finished_at ? "finished " + ukDateTime(f.last_cycle.finished_at) + " UK" : "has not finished yet"}. `
+          + (nxt.text || "") + (this.building?.mode === "replay" ? " Below: a replay of that shift's real events." : "");
+        sub = h("button", { class: "secondary small", onclick: () => this.runCycle() }, "Run a shift now");
+      }
+    }
+    this.controlEl.replaceChildren(button, h("div", { class: "control-text" }, h("p", { class: "control-line" }, line), sub));
   }
+
+  startDialog() {
+    const f = this.firm, cfg = f.settings || {};
+    const pace = select(Object.entries(PACES).map(([k, v]) => [k, `${v.label} — ${v.note}`]), cfg.pace || "6h");
+    const api = input("number", cfg.monthly_api_budget_usd ?? 60, { min: 0, step: 5, inputmode: "decimal" });
+    const mins = input("number", cfg.monthly_minutes_budget ?? 1200, { min: 0, step: 50, inputmode: "numeric" });
+    const model = select([["claude-sonnet-5-5", "Claude Sonnet 5.5 (default)"], ["claude-haiku-5-5", "Claude Haiku 5.5 (more thinking turns per $)"], ["claude-opus-5-5", "Claude Opus 5.5"]], cfg.model || "claude-sonnet-5-5");
+    const go = h("button", { class: "primary", onclick: async () => {
+      closeModal();
+      await this.act("Starting…", { action: "pause", paused: false, pace: pace.value, monthly_api_budget_usd: boxNumber(api, cfg.monthly_api_budget_usd ?? 60), monthly_minutes_budget: boxNumber(mins, cfg.monthly_minutes_budget ?? 1200), model: model.value },
+        (res) => res?.firm_schedule?.ok === false ? "Started, but its shifts could not be scheduled: " + (res.firm_schedule.note || "see the run on GitHub") : "Started. The first shift is starting now; the building comes alive within a couple of minutes.");
+    } }, "Start the company");
+    openModal(h("div", { class: "stack" }, h("h2", {}, f.cycle ? "Start HSN Capital again" : "Start HSN Capital"),
+      h("p", {}, "The firm works in shifts on GitHub's machines. In a shift the agents read the research and the code, write their own rules and their own strategy code, the Engine tests everything on the real price history, teams meet, and challenges are taken on months nobody has tested on."),
+      field("How often a shift runs", pace),
+      h("div", { class: "grid two" }, field("AI budget a month ($)", api, "for the agents' thinking"), field("GitHub minutes a month", mins, "2,000 are free")),
+      planLine(pace, mins, cfg.monthly_minutes_budget ?? 1200),
+      h("p", { class: "help" }, "When the AI budget is used up the Engine carries on testing without AI: between the agents' thinking turns it tries small changes around each agent's best idea, so every shift does real work. At the minutes limit the firm stops until the new month (GitHub's free plan gives 2,000 minutes a month). Between shifts the building replays the last shift."),
+      field("Model for every agent", model),
+      h("p", { class: "help" }, "Pause stops it at any time and costs nothing while paused. Progress is saved to the engine repository every few minutes during a shift and again at its end. Nothing here can place a trade or reach the VPS: the agents only ever work on stored price history."),
+      h("div", { class: "row" }, go, h("button", { class: "secondary", onclick: () => closeModal() }, "Not now"))));
+  }
+
+  pause() {
+    if (!confirm("Pause HSN Capital? No more shifts start until you press Start. A shift that is running now finishes first. Nothing is lost.")) return;
+    this.act("Pausing…", { action: "pause", paused: true }, () => "Paused. No shifts are scheduled and a paused firm uses no GitHub minutes.");
+  }
+
+  /** One CEO action through the Run workflow, with the strip saying what is happening. */
+  async act(label, payload, done) {
+    this.busy = label; this.note = ""; this.paintControl();
+    try {
+      const { result } = await startRun("ceo", payload, () => {}, { prefix: "ceo" });
+      this.busy = "";
+      await this.load();
+      this.say(done(result), result?.firm_schedule?.ok === false ? "warnc" : "good");
+      setTimeout(() => this.refreshLive(), 30000);
+    } catch (e) { this.busy = ""; this.paintControl(); this.say(e.message, "bad"); }
+  }
+
+  say(text, cls = "muted") { if (this.sayEl) { this.sayEl.textContent = text || ""; this.sayEl.className = `control-note ${cls}`; this.sayEl.hidden = !text; } }
 
   render() {
     const f = this.firm;
+    this.stopLoop();
     this.building?.destroy(); this.building = null;
     if (!f) {
-      this.root.replaceChildren(card("HSN Capital", h("p", { class: "muted" }, "The firm has not opened yet: no cycle has run. The first cycle runs on the schedule (every 6 hours) or now:"),
-        h("button", { class: "primary", onclick: () => this.runCycle() }, "Run the first cycle now")));
+      this.root.replaceChildren(card("HSN Capital", h("p", { class: "muted" }, "The firm's files are not in the engine repository yet. They are created by the first shift."),
+        h("button", { class: "primary", onclick: () => this.runCycle(true) }, "Run the first shift now")));
       return;
     }
-    const t = trialMode();
     const n = Object.keys(f.agents || {}).length;
-    const header = card(h("span", {}, "HSN Capital ", badge(`cycle ${f.cycle}`), " ", f.trial_mode ? badge("TRIAL MODE — nothing ranked for real", "trial") : badge("ranking on verified data", "good"), " ", f.paused ? badge("PAUSED", "warn") : null),
-      h("div", { class: "row between" },
-        h("span", { class: "muted" }, `updated ${ukDateTime(f.updated_at)} UK · ${n} agents · ${f.library?.ideas ?? 0} ideas in the library (${f.library?.verified ?? 0} verified) · focus: ${f.monthly_focus || "none"}`),
-        h("span", { class: "row" }, h("button", { class: "secondary small", onclick: () => this.runCycle() }, "Run a cycle now"),
-          h("label", { class: "chip" }, h("input", { type: "checkbox", checked: state.animations || null, onchange: (e) => { state.animations = e.target.checked; localStorage.setItem("hsn.animations", e.target.checked ? "on" : "off"); if (this.building) { this.building.animations = e.target.checked; if (!e.target.checked) this.building.stopReplay(true); this.building.snapAll(); this.building.draw(); } this.paintReplay(); } }), "animations"))),
-      f.trial_mode ? h("p", { class: "warnc" }, t.reason) : null);
+    this.controlEl = h("div", { class: "firm-control" });
+    this.sayEl = h("p", { class: "control-note", hidden: true });
+    const head = card(h("span", {}, "HSN Capital ", badge(`shift ${f.cycle}`), " ", f.trial_mode ? badge("TRIAL MODE — nothing ranked for real", "trial") : badge("ranking on verified data", "good"), " ", f.paused ? badge("PAUSED", "warn") : badge("working", "good")),
+      this.controlEl, this.sayEl);
 
-    this.liveEl = h("p", { class: "muted live-line" });
+    const pages = [["company", "Company", `The building with all ${n} agents. Tap an agent or a room.`], ["people", "People", "Every agent's level and progress to the next one."],
+      ["code", "Rules & code", "The rules and the strategy code the agents and teams wrote themselves."], ["records", "Records", "Floors, budgets, the leaderboard, challenges, minutes and reports."],
+      ["ceo", "CEO's office", "Ask anyone a question, set the focus, change how the firm works."]];
+    const nav = h("div", { class: "subtabs", role: "tablist" }, ...pages.map(([k, label]) => h("button", { type: "button", class: `subtab ${this.page === k ? "is-active" : ""}`, role: "tab", "data-page": k, onclick: () => this.go(k) }, label)));
+    this.pageHelp = h("p", { class: "help page-help" }, pages.find((x) => x[0] === this.page)[2]);
+    this.pagesMeta = pages;
+
+    // Company
+    this.scoreEl = h("div", { class: "stats scoreboard" });
     const canvas = h("canvas", { "aria-label": "The HSN Capital building with every agent at a desk" });
     const legend = h("div", { class: "building-legend" },
       ...Object.entries(LEVELS).map(([k, v]) => h("span", {}, h("i", { style: `background:${LEVEL_COLORS[k]}` }), `${k} ${v}`)),
-      h("span", { class: "sep" }, "bars under each name:"), h("span", {}, h("i", { style: `background:${BAR_COLORS.day}` }), "Day Score"), h("span", {}, h("i", { style: `background:${BAR_COLORS.pips}` }), "pips"),
-      h("span", {}, h("i", { style: `background:${BAR_COLORS.rr}` }), "risk to reward"), h("span", { class: "sep" }, "bright = its challenge on unseen months, faded = practice · tap an agent or a room"));
+      h("span", { class: "sep" }, "bars under each name:"), h("span", {}, h("i", { style: `background:${BAR_COLORS.day}` }), "months in profit"), h("span", {}, h("i", { style: `background:${BAR_COLORS.pips}` }), "pips"),
+      h("span", {}, h("i", { style: `background:${BAR_COLORS.rr}` }), "risk to reward"), h("span", {}, h("i", { style: `background:${BAR_COLORS.win}` }), "win rate"),
+      h("span", { class: "sep" }, "★ most pips · ◎ best win rate · bright bars = its challenge on unseen months, faded = practice"));
     this.replayBox = h("div", { class: "toolbar replay-bar" });
-    const buildingCard = card("The building (all " + n + " agents; every movement is a real event)", this.liveEl, this.replayBox, h("div", { class: "building-wrap" }, canvas), legend);
-    this.staffBox = h("div", {});
-    const page = h("div", { class: "stack" }, header, buildingCard, card("Staff: level and progress to the next level", this.staffBox), this.firmPage(), this.brainsCard(), this.ceoOffice());
-    this.root.replaceChildren(page);
-    this.paintLive(); this.paintStaff(); this.paintReplay();
+    this.tickerEl = h("div", { class: "ticker", "aria-live": "off" });
+    const company = h("div", { class: "stack", "data-panel": "company" }, this.scoreEl,
+      card(`The building: all ${n} agents (every movement is a real event)`, h("div", { class: "building-wrap" }, canvas), legend, this.replayBox),
+      card("What just happened", h("p", { class: "help" }, "The latest real events, newest first. Each test is the Engine's result on real price history; nothing here is written by the AI."), this.tickerEl));
+    // the other pages are built when first opened (they are long)
+    this.panels = { company, people: null, code: null, records: null, ceo: null };
+    this.panelBox = h("div", {}, company);
+    this.root.replaceChildren(h("div", { class: "stack" }, head, nav, this.pageHelp, this.panelBox));
+    this.paintControl(); this.paintScore(); this.paintTicker(); this.paintReplay();
+    if (this.page !== "company") this.go(this.page);
     requestAnimationFrame(() => {
       this.building = new Building(canvas, { animations: state.animations, onAgent: (id) => this.openAgent(id), onRoom: (room) => this.openRoom(room) });
+      this.building.setStars(scoreboard(f).stars);
       this.building.setData(f, this.live);
       this.building.applyLive(this.live);
       window.hsnBuilding = this.building;                 // handy for checks from the console; holds no secrets
+      this.startLoop();
     });
   }
 
-  // ── replay of a finished cycle (exactly its real events) ────────────────────────────────────────────────────────
+  go(page) {
+    this.page = page;
+    this.root.querySelectorAll(".subtab").forEach((b) => b.classList.toggle("is-active", b.dataset.page === page));
+    if (this.pageHelp) this.pageHelp.textContent = (this.pagesMeta || []).find((x) => x[0] === page)?.[2] || "";
+    if (!this.panels[page]) {
+      if (page === "people") { this.staffBox = h("div", {}); this.panels.people = card("Staff: level and progress to the next level", this.staffBox); this.paintStaff(); }
+      if (page === "code") this.panels.code = this.codePage();
+      if (page === "records") this.panels.records = h("div", { class: "stack" }, this.firmPage(), this.brainsCard());
+      if (page === "ceo") this.panels.ceo = this.ceoOffice();
+    }
+    this.panelBox.replaceChildren(this.panels[page]);
+    if (page === "company") { this.building?._resize?.(); this.startLoop(); } else this.stopLoop(false);
+  }
+
+  paintScore() {
+    if (!this.scoreEl) return;
+    this.scoreEl.hidden = !(this.firm.cycle > 0 || isRunning(this.live));        // nothing to score before the first shift
+    const sb = scoreboard(this.firm), c = isRunning(this.live) ? (this.live.counters || {}) : {};
+    const who = (x, text) => x ? h("button", { class: "link", type: "button", onclick: () => this.openAgent(x.id) }, text) : "—";
+    this.scoreEl.replaceChildren(
+      stat("★ Most pips", sb.pips ? `${sb.pips.pips > 0 ? "+" : ""}${num(sb.pips.pips, 0)}` : "—", who(sb.pips, sb.pips ? `${sb.pips.name} · ${sb.pips.sets} trades` : ""), sb.pips ? "good" : ""),
+      stat("◎ Best win rate", sb.win ? pct(sb.win.win, 1) : "—", sb.win ? who(sb.win, `${sb.win.name} · ${sb.win.sets} trades`) : `needs ${sb.minTrades}+ trades in profit`, sb.win ? "good" : ""),
+      stat("Ideas tested", num(sb.ideas, 0), c.ideas_tested ? `+${num(c.ideas_tested, 0)} this shift` : `${num(sb.verified, 0)} verified by the Audit desk`),
+      stat("Own strategy code", sb.strategies, `${sb.waiting} waiting for the sandbox · ${sb.agentsWithCode} agents trade their own code`),
+      stat("Moved up", sb.levelUps, `${sb.challenges} challenges taken so far`),
+      stat("AI this month", `$${(+sb.spent || 0).toFixed(2)}`, `of $${num(sb.budget, 0)} · ${num(minutesUsedThisMonth(state.minutes), 0)} of ${num(sb.minutesBudget, 0)} GitHub minutes`));
+  }
+
+  paintTicker() {
+    if (!this.tickerEl) return;
+    const running = isRunning(this.live);
+    const events = (running ? (this.live.events || []) : (this.firm.recent_events || [])).slice(-60).reverse();
+    const rows = events.map((e) => eventLine(e, (id) => this.nameOf(id))).filter(Boolean).slice(0, 40);
+    this.tickerEl.replaceChildren(...(rows.length ? rows.map((r) => h("div", { class: `tick ${r.cls}` }, h("span", { class: "tick-t" }, ukDateTime(r.at).slice(-5)), h("span", { class: "tick-x" }, r.text)))
+      : [h("p", { class: "muted" }, this.firm.cycle ? "Nothing in the last shift's record." : "Nothing has happened yet: the firm has not run a shift.")]));
+  }
+
+  // ── replay of a finished shift (exactly its real events). Between shifts it plays on a loop, so the building is never
+  //    a still picture - and it always says that it is a replay.
   paintReplay(note = "") {
     if (!this.replayBox) return;
     const f = this.firm, names = (f.replays || []).slice().reverse();
-    if (!names.length) { this.replayBox.replaceChildren(h("span", { class: "muted small" }, f.cycle ? "This cycle has no replay file (it ran before replays were recorded)." : "Nothing to replay yet: the firm has not run a cycle.")); return; }
+    if (!names.length) { this.replayBox.replaceChildren(h("span", { class: "muted small" }, f.cycle ? "This shift has no replay file." : "Nothing to replay yet: the firm has not run a shift.")); return; }
     const playing = this.building?.mode === "replay";
-    const pick = select(names.map((x) => [x, `cycle ${parseInt(x.replace(/\D/g, ""), 10)}`]), this.replayPick || names[0], { class: "small", "aria-label": "Cycle to replay" });
-    pick.addEventListener("change", () => (this.replayPick = pick.value));
+    const pick = select(names.map((x) => [x, `shift ${parseInt(x.replace(/\D/g, ""), 10)}`]), this.replayPick || names[0], { class: "small", "aria-label": "Shift to replay" });
+    pick.addEventListener("change", () => { this.replayPick = pick.value; if (this.building?.mode === "replay") { this.building.stopReplay(true); this.startReplay(pick.value); } });
     const speed = select([[1, "1×"], [2, "2×"], [4, "4×"], [8, "8×"], [16, "16×"]], this.replaySpeed || 4, { class: "small", "aria-label": "Replay speed" });
     speed.addEventListener("change", () => { this.replaySpeed = +speed.value; if (this.building) this.building.speed = +speed.value; });
-    this.replayNote = h("span", { class: "muted small" }, note || (state.animations ? "plays that cycle's real events in order" : "turn animations on to replay"));
-    this.replayBox.replaceChildren(
-      playing ? h("button", { class: "secondary small", onclick: () => { this.building.stopReplay(); this.paintReplay(); } }, "■ Stop")
-        : h("button", { class: "primary small", disabled: state.animations ? null : true, onclick: () => this.startReplay(pick.value, +speed.value) }, "▶ Replay"),
-      pick, h("span", { class: "muted small" }, "speed"), speed, this.replayNote);
+    this.replayNote = h("span", { class: "muted small" }, note || (isRunning(this.live) ? "a shift is running: the building is live" : !state.animations ? "animations are off (the picture is still)" : playing ? "" : "replay is off"));
+    const loop = h("label", { class: "chip" }, h("input", { type: "checkbox", checked: this.loop || null, onchange: (e) => { this.loop = e.target.checked; localStorage.setItem("hsn.replayloop", this.loop ? "on" : "off"); if (this.loop) this.startLoop(); else { this.stopLoop(); this.paintReplay(); } } }), "replay the last shift between shifts");
+    const anim = h("label", { class: "chip" }, h("input", { type: "checkbox", checked: state.animations || null, onchange: (e) => { state.animations = e.target.checked; localStorage.setItem("hsn.animations", e.target.checked ? "on" : "off"); if (this.building) { this.building.animations = e.target.checked; if (!e.target.checked) this.building.stopReplay(true); this.building.snapAll(); this.building.draw(); } if (e.target.checked) this.startLoop(); this.paintReplay(); } }), "movement");
+    this.replayBox.replaceChildren(this.replayNote, h("details", { class: "replay-more" }, h("summary", {}, "Replay options"), h("div", { class: "row" }, loop, anim, pick, h("span", { class: "muted small" }, "speed"), speed)));
   }
 
-  async startReplay(name, speed) {
+  startLoop() {
+    clearTimeout(this.loopT);
+    if (!this.loop || !state.animations || this.page !== "company" || !this.building || this.building.mode === "replay" || isRunning(this.live) || this.root.hidden) return;
+    const names = (this.firm?.replays || []).slice().reverse();
+    if (!names.length) return;
+    this.loopT = setTimeout(() => this.startReplay(this.replayPick || names[0]), 1200);
+  }
+  stopLoop(stopNow = true) { clearTimeout(this.loopT); if (stopNow && this.building?.mode === "replay") this.building.stopReplay(true); }
+
+  async startReplay(name) {
     try {
-      this.replayNote.textContent = "Loading that cycle's events…";
-      const rep = await gh.getJson(state.token, state.owner, `firm/replays/${name}`);
-      if (!rep) { this.replayNote.textContent = "That replay file is no longer in the engine repo."; return; }
-      this.building.playReplay(rep, { speed, onProgress: (i, n, e) => { if (this.replayNote) this.replayNote.textContent = `event ${i} of ${n} · ${this.eventText(e)}`; }, onEnd: () => this.paintReplay(`cycle ${rep.cycle}: replay finished`) });
-      this.paintReplay(); this.replayNote.textContent = `cycle ${rep.cycle}: ${rep.events.length} events`;
-    } catch (e) { this.replayNote.textContent = e.message; }
+      if (!this.building || isRunning(this.live)) return;
+      this.replayCache = this.replayCache || {};
+      const rep = this.replayCache[name] || (this.replayCache[name] = await gh.getJson(state.token, state.owner, `firm/replays/${name}`));
+      if (!rep || !this.building || this.building.mode === "replay" || isRunning(this.live) || this.page !== "company") return;
+      this.building.playReplay(rep, { speed: this.replaySpeed || 4,
+        onProgress: (i, n, e) => { if (this.replayNote) this.replayNote.textContent = `Replay of shift ${rep.cycle} (real events, ${ukDateTime(rep.finished_at)} UK) · ${i} of ${n} · ${this.eventText(e)}`; },
+        onEnd: () => { this.paintReplay(`Replay of shift ${rep.cycle} finished.`); this.paintControl(); if (this.loop) { clearTimeout(this.loopT); this.loopT = setTimeout(() => this.startLoop(), 9000); } } });
+      this.paintReplay(`Replay of shift ${rep.cycle}: ${rep.events.length} real events`); this.paintControl();
+    } catch (e) { if (this.replayNote) this.replayNote.textContent = e.message; }
   }
 
   nameOf(id) { return this.firm?.agents?.[id]?.name || id || ""; }
-  eventText(e) {
-    const who = e.agent ? this.nameOf(e.agent) : e.group || (e.floor ? `floor ${e.floor}` : "");
-    const t = { tested: `${who}: Engine result, Month Score ${num(e.month_score, 1)}`, thinking: `${who} is thinking`, coded: `${who} handed in code (${e.name})`,
-      meeting_start: e.discussion ? `floor ${e.floor} discussion starts` : `group ${e.group} meets`, meeting: e.discussion ? `floor ${e.floor} discussion ends` : `group ${e.group} agrees ${e.strategy || "nothing"}`,
-      challenge_start: `${who}: floor ${e.floor} challenge on ${Array.isArray(e.months) ? e.months.join(", ") : ""}`, challenge_failed: `${who}: challenge not passed`, audit_start: `${who}: Audit desk re-run`,
-      audit_failed: `${who}: audit disagreed, level-up blocked`, level_up: `${who}: floor ${e.from} → ${e.to}${e.skip ? " (skipped a floor)" : ""}`, swapped_down: `${who}: swapped down ${e.from} → ${e.to}`,
-      transfer: `${who}: transfer ${e.from_group} → ${e.to_group}`, battle: `promotion battle for floor ${e.floor}: ${e.challenger} v ${e.incumbent}, ${e.winner} won`, solo_passed_no_seat: `${who} passed its own challenge; no seat above yet`,
-      rotation: `new Analyst ${e.new_name}`, data_update: "new price data" };
-    return t[e.kind] || e.kind.replaceAll("_", " ");
-  }
+  eventText(e) { return eventLine(e, (id) => this.nameOf(id))?.text || String(e.kind || "").replaceAll("_", " "); }
 
   // ── staff: every agent, its level and its bars ──────────────────────────────────────────────────────────────────
   paintStaff() {
     const f = this.firm, fl = this.filter;
     const chips = h("div", { class: "checks" }, ...[["all", "All"], ...[5, 4, 3, 2, 1].map((k) => [String(k), `Floor ${k}`])].map(([v, l]) =>
       h("button", { class: `chip ${fl.floor === v ? "on" : ""}`, type: "button", onclick: () => { fl.floor = v; this.paintStaff(); } }, l)));
-    const sort = select([["floor", "by floor"], ["progress", "by progress"], ["score", "by Month Score"], ["name", "by name"]], fl.sort, { class: "small", "aria-label": "Sort" });
+    const sort = select([["floor", "by floor"], ["pips", "by pips"], ["win", "by win rate"], ["progress", "by progress"], ["score", "by Month Score"], ["name", "by name"]], fl.sort, { class: "small", "aria-label": "Sort" });
     sort.addEventListener("change", () => { fl.sort = sort.value; this.paintStaff(); });
     const search = input("text", fl.text, { placeholder: "find a name or a desk", class: "small", "aria-label": "Find" });
     search.addEventListener("input", () => { fl.text = search.value; clearTimeout(this.searchT); this.searchT = setTimeout(() => { this.paintStaff(); const el = this.staffBox.querySelector("input[type=text]"); el?.focus(); el?.setSelectionRange(el.value.length, el.value.length); }, 250); });
@@ -185,26 +336,28 @@ export class FirmView {
     if (fl.floor !== "all") rows = rows.filter((a) => String(a.floor) === fl.floor);
     if (fl.text.trim()) { const q = fl.text.trim().toLowerCase(); rows = rows.filter((a) => `${a.name} ${a.desk} ${a.group}`.toLowerCase().includes(q)); }
     const by = { floor: (a, b) => b.floor - a.floor || String(a.group).localeCompare(String(b.group)) || a.id.localeCompare(b.id), progress: (a, b) => (b.progress?.pct || 0) - (a.progress?.pct || 0) || a.id.localeCompare(b.id),
-      score: (a, b) => (b.best_month_score ?? -1e9) - (a.best_month_score ?? -1e9), name: (a, b) => a.name.localeCompare(b.name) };
+      score: (a, b) => (b.best_month_score ?? -1e9) - (a.best_month_score ?? -1e9), name: (a, b) => a.name.localeCompare(b.name),
+      pips: (a, b) => (b.best_pips ?? -1e9) - (a.best_pips ?? -1e9) || a.id.localeCompare(b.id), win: (a, b) => (b.best_win ?? -1) - (a.best_win ?? -1) || a.id.localeCompare(b.id) };
     rows.sort(by[fl.sort]);
     const tiles = rows.map((a) => {
       const p = a.progress || {};
       return h("button", { class: "agent-tile", type: "button", "data-agent": a.id, onclick: () => this.openAgent(a.id) },
         h("span", { class: "at-head" }, h("span", { class: "lvl", style: `background:${LEVEL_COLORS[a.level_n || a.floor]}` }, String(a.level_n || a.floor)), h("span", { class: "at-name" }, a.name), h("span", { class: `at-mood mood-${a.mood}`, title: a.mood }, MOOD_FACE[a.mood] || "")),
         h("span", { class: "at-sub" }, `${a.level} · ${a.desk} · ${a.group}`),
+        h("span", { class: "at-sub" }, a.best_pips != null ? `best: ${a.best_pips > 0 ? "+" : ""}${num(a.best_pips, 0)} pips · ${a.best_win == null ? "—" : num(a.best_win, 0) + "%"} wins${a.own_code ? " · own code" : ""}` : "no idea tested yet"),
         progressBars(p, { compact: true }),
         h("span", { class: "at-foot" }, p.basis && p.basis !== "none" ? `${p.pct}% of ${p.to === "presenting to the CEO" ? "floor 5's" : "the " + p.to} checks · ${p.basis === "challenge" ? "its challenge" : "practice"}` : "no result yet"));
     });
     this.staffBox.replaceChildren(h("div", { class: "row between staff-tools" }, chips, h("span", { class: "row" }, search, sort)),
-      h("p", { class: "help" }, "Each bar is the share of that agent's months that meet one of the next level's monthly checks: in profit (Day Score), at the pip target, at the reward-to-risk. Bright bars are from its real challenge on months it had never been tested on; faded bars are practice on its training months."),
+      h("p", { class: "help" }, "Each bar is the share of that agent's months that meet one of the next level's monthly checks: in profit (Day Score), at the pip target, at the reward-to-risk, and at the floor's win-rate target. Bright bars are from its real challenge on months it had never been tested on; faded bars are practice on its training months."),
       rows.length ? h("div", { class: "staff-grid" }, ...tiles) : h("p", { class: "muted" }, "Nobody matches that."));
   }
 
   firmPage() {
     const f = this.firm, floors = f.floors || {};
-    const rows = (this.board?.rows || []).slice(0, 25).map((r) => ({ "#": "", Name: r.name, Desk: r.desk, Floor: `${r.floor} ${r.level}`, Group: r.group, "Month Score": num(r.best_month_score, 1), "£": money(r.best_pnl), "Avg R": signed(r.best_avg_r, 3), Pips: num(r.best_pips, 0), "To next": r.progress_pct != null ? `${r.progress_pct}%` : "—", Ideas: r.ideas, Mood: r.mood, _id: r.agent_id }));
+    const rows = (this.board?.rows || []).slice(0, 25).map((r) => ({ "#": "", Name: r.name + (r.own_code ? " · own code" : ""), Floor: `${r.floor} ${r.level}`, Group: r.group, Pips: num(r.best_pips, 0), "Win %": r.best_win == null ? "—" : num(r.best_win, 1), Trades: r.best_sets ?? "—", "£": money(r.best_pnl), "Avg R": signed(r.best_avg_r, 3), "Month Score": num(r.best_month_score, 1), "To next": r.progress_pct != null ? `${r.progress_pct}%` : "—", Ideas: r.ideas, _id: r.agent_id }));
     rows.forEach((r, i) => (r["#"] = i + 1));
-    const lb = table(["#", "Name", "Desk", "Floor", "Group", "Month Score", "£", "Avg R", "Pips", "To next", "Ideas", "Mood"], rows, { numeric: ["#", "Month Score", "£", "Avg R", "Pips", "To next", "Ideas"] });
+    const lb = table(["#", "Name", "Floor", "Group", "Pips", "Win %", "Trades", "£", "Avg R", "Month Score", "To next", "Ideas"], rows, { numeric: ["#", "Pips", "Win %", "Trades", "£", "Avg R", "Month Score", "To next", "Ideas"] });
     lb.querySelectorAll("tbody tr").forEach((tr, i) => { tr.style.cursor = "pointer"; tr.addEventListener("click", () => this.openAgent(rows[i]._id)); });
     const ideas = (f.ideas_board || []).map((i) => h("div", { class: "item", onclick: () => this.openIdea(i) }, h("span", {}, h("span", { class: "t" }, `${i.id} · ${i.hypothesis}`), h("span", { class: "d" }, ` ${i.agent} (${i.desk}) · £${num(i.summary?.pnl_gbp, 0)} · avg R ${signed(i.summary?.avg_r, 3)} · passed floor ${i.gates?.passed_floor}`))));
     const ev = (f.recent_events || []).filter((e) => ["level_up", "swapped_down", "transfer", "battle", "challenge_failed", "audit_failed", "meeting", "rotation", "retest_failed", "solo_passed_no_seat"].includes(e.kind)).slice(-50).reverse();
@@ -223,19 +376,20 @@ export class FirmView {
       h("h3", {}, "Budget meters"), h("div", { class: "stats" },
         stat("API this month (firm)", `$${num(budget.firm_spent_usd, 2)}`, `cap $${num(budget.firm_budget_usd, 0)}`, (budget.firm_spent_usd || 0) >= 0.8 * (budget.firm_budget_usd || 60) ? "warnc" : ""),
         stat("API this month (site)", `$${num(budget.total_spent_usd, 2)}`, `cap $${num(state.config?.monthly_budget_usd, 0)}`),
-        stat("Actions minutes", num(state.minutes?.minutes_used, 0), `of ${budget.minutes_budget} firm budget / 2000 free`, (state.minutes?.minutes_used || 0) >= 0.8 * (budget.minutes_budget || 1200) ? "warnc" : ""),
-        stat("Last cycle", `${lc.thinking_turns ?? 0} turns`, `${lc.variants_tested ?? 0} variants · ${lc.ai_calls ?? 0} AI calls · $${num(lc.ai_cost_usd, 2)}${lc.budget?.cost_per_turn_usd ? ` · $${lc.budget.cost_per_turn_usd} a turn${lc.budget.cost_per_turn_measured ? " (measured)" : " (estimate)"}` : ""}`),
+        stat("GitHub minutes this month", num(minutesUsedThisMonth(state.minutes), 0), `of the firm's limit of ${num(budget.minutes_budget, 0)} (2,000 are free)${state.minutes?.checked_at ? " · counted " + ukDateTime(state.minutes.checked_at) + " UK" : ""}`, minutesUsedThisMonth(state.minutes) >= 0.8 * (budget.minutes_budget || 1200) ? "warnc" : ""),
+        lc.max_seconds && lc.seconds != null ? stat("Last shift's time", `${num(lc.seconds / 60, 0)} min`, `it was given ${num(lc.max_seconds / 60, 0)} minutes to work (an even share of the minutes left this month)`) : null,
+        stat("Last shift", `${lc.thinking_turns ?? 0} turns`, `${lc.variants_tested ?? 0} variants · ${lc.ai_calls ?? 0} AI calls · $${num(lc.ai_cost_usd, 2)}${lc.budget?.cost_per_turn_usd ? ` · $${lc.budget.cost_per_turn_usd} a turn${lc.budget.cost_per_turn_measured ? " (measured)" : " (estimate)"}` : ""}`),
         stat("Challenge attempts", f.attempts?.total ?? 0, "all counted for the random bar"), stat("Data", f.data_coverage?.symbols?.XAUUSD?.months ? `${f.data_coverage.symbols.XAUUSD.months} months gold` : "—", f.data_coverage?.symbols?.XAUUSD?.last_bar?.slice(0, 10) || "")),
       h("p", { class: "muted small" }, "Paper desk: parked (your decision of 8 Nov 2026). Floor 5's challenge needs 20 trading days of live paper testing, so nobody can pass floor 5 until it returns."),
-      h("h3", {}, "Leaderboard by Month Score"), lb,
+      h("h3", {}, "Leaderboard (ranked by Month Score, which is money first; pips and win rate beside it)"), lb,
       h("h3", {}, "Ideas Board (proven from floor 3 up, with verified report cards)"), ideas.length ? h("div", { class: "list" }, ...ideas) : h("p", { class: "muted" }, "Nothing has passed floor 3 yet."),
       h("h3", {}, "Level-ups, swaps, transfers, battles, failed challenges"), ev.length ? evList : h("p", { class: "muted" }, "None yet."),
       h("div", { class: "grid three" }, docs("Meeting minutes", f.minutes || [], "firm/minutes"), docs("Floor discussions", (f.discussions || []), "firm/discussions"), docs("Managers' reports", f.reports || [], "firm/reports"), docs("Head of Trading memos", f.memos || [], "firm/memos")),
       (lc.warnings || []).length ? h("p", { class: "warnc" }, lc.warnings.join(" ")) : null,
-      (lc.errors || []).length ? h("p", { class: "bad" }, "Last cycle reported errors: " + lc.errors.map((e) => e.message || e.type).join("; ")) : null);
+      (lc.errors || []).length ? h("p", { class: "bad" }, "The last shift reported errors: " + lc.errors.map((e) => e.message || e.type).join("; ")) : null);
   }
 
-  /** How the agents think: research and code, with the real counts from the last cycle. */
+  /** How the agents think: research and code, with the real counts from the last shift. */
   brainsCard() {
     const f = this.firm, lc = f.last_cycle || {}, live = lc.live || {}, feats = f.features || {}, mode = f.settings?.research || "live";
     const list = (feats.active || []).map((x) => h("div", { class: "item", onclick: () => this.openAgent(x.agent_id) }, h("span", {}, h("span", { class: "t" }, `${x.id} · ${x.name}`), h("span", { class: "d" }, ` ${x.timeframe}M bars · by ${x.agent_name} · a value for ${num(x.usable, 0)} signals`))));
@@ -244,9 +398,9 @@ export class FirmView {
         + (mode === "live" ? "While it thinks, an agent can also question the Engine (breakdowns, exit comparisons, a test of a rule set, the library, its next level): those lookups are its only tools — no shell, no files, no network. " : mode === "pack" ? "Agents ask the Engine questions that are answered before their next turn. " : "")
         + (f.settings?.agent_code === false ? "" : "An agent can also hand in a small function over closed bars (a coded feature). It is never run where the API key is: a separate job with no secrets and no network runs it, proves it does not look ahead, and only then can rules filter on it.")),
       h("div", { class: "stats" },
-        stat("Research lookups (last cycle)", live.research_calls ?? 0, mode === "live" ? "live tools" : mode),
-        stat("Ideas tested (last cycle)", live.ideas_tested ?? 0, `${num(live.trades_tested, 0)} trades through the Engine`),
-        stat("Challenges (last cycle)", live.challenges ?? 0, `${live.challenges_passed ?? 0} passed`),
+        stat("Research lookups (last shift)", live.research_calls ?? 0, mode === "live" ? "live tools" : mode),
+        stat("Ideas tested (last shift)", live.ideas_tested ?? 0, `${num(live.trades_tested, 0)} trades through the Engine`),
+        stat("Challenges (last shift)", live.challenges ?? 0, `${live.challenges_passed ?? 0} passed`),
         stat("Coded features in use", (feats.active || []).length, `${feats.waiting ?? 0} waiting for the sandbox · ${feats.rejected ?? 0} rejected so far`)),
       list.length ? h("div", { class: "list" }, ...list) : h("p", { class: "muted" }, "No coded feature has passed the sandbox yet."));
   }
@@ -274,32 +428,52 @@ export class FirmView {
     const decision = select([["approve", "Approve"], ["reject", "Reject"], ["question", "Question"]], "approve");
     const note = input("text", "", { placeholder: "note or question" });
     const decide = h("button", { class: "secondary", onclick: () => this.ceo("memo", { week: memoSel.value, decision: decision.value, note: note.value }) }, "Record decision");
-    const pause = h("button", { class: f.paused ? "primary" : "danger", onclick: () => this.ceo("pause", { paused: !f.paused }) }, f.paused ? "Resume the firm" : "Pause the firm");
-    this.ceoNote = h("p", { class: "muted small" }, f.paused ? "Resume switches the 6-hourly schedule back on and starts a cycle straight away. While paused the schedule is off and spends no minutes." : "Pause switches the 6-hourly schedule off, so a paused firm spends no minutes.");
+    const cfg = f.settings || {};
+    const pace = select(Object.entries(PACES).map(([k, v]) => [k, `${v.label} — ${v.note}`]), cfg.pace || "6h");
+    const apiBudget = input("number", cfg.monthly_api_budget_usd ?? 60, { min: 0, step: 5, inputmode: "decimal" });
+    const minsBudget = input("number", cfg.monthly_minutes_budget ?? 1200, { min: 0, step: 50, inputmode: "numeric" });
+    const gate = h("input", { type: "checkbox", checked: cfg.win_rate_gate ? true : null });
+    const search = h("input", { type: "checkbox", checked: (cfg.engine_search_per_cycle ?? 150) > 0 ? true : null });
+    const ownCode = h("input", { type: "checkbox", checked: cfg.agent_strategies === false ? null : true });
+    const saveHow = h("button", { class: "secondary", onclick: () => this.act("Saving…", { action: "resize", pace: pace.value, monthly_api_budget_usd: boxNumber(apiBudget, cfg.monthly_api_budget_usd ?? 60), monthly_minutes_budget: boxNumber(minsBudget, cfg.monthly_minutes_budget ?? 1200),
+      win_rate_gate: gate.checked, engine_search_per_cycle: search.checked ? Math.max(1, cfg.engine_search_per_cycle || 150) : 0, agent_strategies: ownCode.checked },
+      () => "Saved. It applies from the next shift.") }, "Save how the firm works");
+    const targets = [1, 2, 3, 4, 5].map((k) => `${k}: ${f.floors?.[String(k)]?.challenge?.target?.win_pct ?? "—"}%`).join(" · ");
+    this.ceoNote = h("p", { class: "muted small" }, "Start and Pause are at the top of the page.");
     return (this.ceoCard = card("CEO's office", h("p", { class: "help" }, "Every answer comes from the person's real file (Engine numbers only). A commendation lifts a mood and never skips a check. Nothing goes to the VPS, a demo account or live trading from here."),
       h("div", { class: "grid two" },
         h("div", { class: "stack" }, field("Ask", who), q, h("div", { class: "row" }, ask), answer),
         h("div", { class: "stack" }, field("Monthly focus", focus), h("div", { class: "row" }, setFocus), field("Any agent's file, or a commendation", agentSel), h("div", { class: "row" }, openFile, commend),
-          field("Head of Trading memo", memoSel), h("div", { class: "row" }, decision, note, decide), h("div", { class: "row" }, pause), this.ceoNote))));
+          field("Head of Trading memo", memoSel), h("div", { class: "row" }, decision, note, decide), this.ceoNote)),
+      h("h3", {}, "How the firm works"),
+      h("div", { class: "stack" }, field("How often a shift runs", pace),
+        h("div", { class: "grid two" }, field("AI budget a month ($)", apiBudget, "for the agents' thinking"), field("GitHub minutes a month", minsBudget, "2,000 are free")),
+        planLine(pace, minsBudget, cfg.monthly_minutes_budget ?? 1200),
+        h("p", { class: "help" }, "When the AI budget is used up the Engine carries on testing without AI. At the minutes limit the firm stops until the new month (GitHub's free plan gives 2,000 minutes a month)."),
+        f.last_cycle?.max_seconds && f.last_cycle?.seconds != null ? h("p", { class: "muted small" }, `The last shift (shift ${f.cycle}) was given ${num(f.last_cycle.max_seconds / 60, 0)} minutes to work and took ${num(f.last_cycle.seconds / 60, 0)}.`) : null,
+        h("label", { class: "chip wide" }, ownCode, "Agents may write their own strategy code (it only ever runs in the sandbox: no secrets, no network, look-ahead proof)"),
+        h("label", { class: "chip wide" }, search, "The Engine keeps testing small changes around each agent's best idea between its thinking turns"),
+        h("label", { class: "chip wide" }, gate, `Make the win rate a pass mark for moving up (now: shown and ranked on only). Targets by floor — ${targets}`),
+        h("p", { class: "help" }, "Money always comes first: a month that loses money fails whatever its win rate. With the pass mark on, a month must also reach the floor's win-rate target."),
+        h("div", { class: "row" }, saveHow))));
   }
 
   async ceo(action, payload) {
     try {
       if (this.ceoNote) this.ceoNote.textContent = "Sending… (a run on GitHub; usually about a minute)";
-      const { result } = await startRun("ceo", { action, ...payload }, () => {}, { prefix: "ceo" });
+      await startRun("ceo", { action, ...payload }, () => {}, { prefix: "ceo" });
       await this.load();
-      const sch = result?.firm_schedule;
-      if (this.ceoNote && sch) this.ceoNote.textContent = sch.ok ? `Done. The firm's schedule is ${sch.on ? "on" : "off"}.` : `The firm's schedule could not be switched: ${sch.note || "see the run on GitHub"}`;
+      this.say("Done.", "good");
     } catch (e) { if (this.ceoNote) { this.ceoNote.textContent = e.message; this.ceoNote.className = "bad"; } }
   }
 
-  async runCycle() {
-    if (this.firm?.paused) { alert("The firm is paused, so a cycle would do nothing. Press Resume in the CEO's office first (it starts a cycle for you)."); return; }
+  async runCycle(first = false) {
+    if (this.firm?.paused && !first) { this.say("The firm is paused, so a shift would do nothing. Press Start first.", "warnc"); return; }
     try {
       await gh.dispatch(state.token, state.owner, gh.FIRM_WORKFLOW, { settings: "" });
-      alert("Cycle requested. It takes up to 25 minutes; the building shows what each agent is doing as the status file updates.");
-      setTimeout(() => this.refreshLive(), 20000);
-    } catch (e) { alert(e.message); }
+      this.say("A shift has been asked for. It starts within a minute or two and the building goes live.", "good");
+      setTimeout(() => this.refreshLive(), 45000);
+    } catch (e) { this.say(e.message, "bad"); }
   }
 
   // ── an agent's file ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -316,7 +490,7 @@ export class FirmView {
       Month: m, Sets: v.sets ?? 0, "In profit": tick(v.ok.money), "£": money(v.pnl_gbp), Pips: num(v.pips, 0), need: num(v.pips_needed, 0), "Pips ✓": tick(v.ok.pips), "R:R": num(v.reward_to_risk, 2), "R:R ✓": tick(v.ok.reward_to_risk),
       "DD %": pct(v.worst_drawdown_pct), "DD ✓": tick(v.ok.drawdown), "Month Score": num(v.month_score, 1) })), { numeric: ["Sets", "£", "Pips", "need", "R:R", "DD %", "Month Score"] }) : null;
     const pm = best?.per_month ? table(["Month", "Sets", "£", "Avg R", "Pips", "Month Score", "DD %"], Object.entries(best.per_month).map(([m, s]) => ({ Month: m, Sets: s.sets, "£": money(s.pnl_gbp), "Avg R": signed(s.avg_r, 3), Pips: num(s.pips, 0), "Month Score": num(s.month_score, 1), "DD %": pct(s.worst_drawdown_pct) })), { numeric: ["Sets", "£", "Avg R", "Pips", "Month Score", "DD %"] }) : null;
-    const chRows = (list, who) => list.slice().reverse().map((c) => ({ Cycle: c.cycle, Who: who, Floor: c.floor, Months: (c.months || []).join(", "), Result: h("span", { class: c.passed ? "good" : "bad" }, c.passed ? (c.moved === false ? "passed · waiting for a seat" : "passed") : "not passed"),
+    const chRows = (list, who) => list.slice().reverse().map((c) => ({ Shift: c.cycle, Who: who, Floor: c.floor, Months: (c.months || []).join(", "), Result: h("span", { class: c.passed ? "good" : "bad" }, c.passed ? (c.moved === false ? "passed · waiting for a seat" : "passed") : "not passed"),
       "Month Score": num(c.month_score, 1), Why: (c.reasons || []).join("; ") || (c.passed ? "all monthly checks met" : ""), Replay: watch(c.replay) }));
     const challenges = [...chRows(file.solo_challenges || [], "own strategy"), ...chRows(g?.challenges || [], `group ${g?.id}`)];
     const luck = best?.luck_check;
@@ -334,10 +508,10 @@ export class FirmView {
         p.basis && p.basis !== "none" ? h("div", { class: "overall" }, h("div", { class: "progress big" }, h("div", { style: `width:${p.pct}%` })), h("b", {}, `${p.checks_met} of ${p.checks} monthly checks met (${p.pct}%)`)) : null,
         progressBars(p), p.basis && p.basis !== "none" ? h("p", { class: "muted small" }, `Worst drawdown ${pct(p.dd?.worst)} against a limit of ${p.dd?.limit}% (${p.dd?.months_ok} of ${p.months} months inside it). ${p.note}`) : null, checks),
 
-      card("How it got here", career.length ? h("ol", { class: "timeline" }, ...career.map((x) => h("li", { class: `tl-${x.kind}` }, h("span", { class: "d" }, `cycle ${x.cycle}${x.at ? " · " + ukDateTime(x.at) + " UK" : ""}`), h("span", {}, story(x, (i) => this.nameOf(i)))))) : h("p", { class: "muted" }, "Nothing on its record yet: no challenge taken, no move."),
-        challenges.length ? h("div", {}, h("h3", {}, "Every challenge, with its result"), table(["Cycle", "Who", "Floor", "Months", "Result", "Month Score", "Why", "Replay"], challenges, { numeric: ["Month Score"] })) : h("p", { class: "muted small" }, "No challenge attempt yet (its own or its group's).")),
+      card("How it got here", career.length ? h("ol", { class: "timeline" }, ...career.map((x) => h("li", { class: `tl-${x.kind}` }, h("span", { class: "d" }, `shift ${x.cycle}${x.at ? " · " + ukDateTime(x.at) + " UK" : ""}`), h("span", {}, story(x, (i) => this.nameOf(i)))))) : h("p", { class: "muted" }, "Nothing on its record yet: no challenge taken, no move."),
+        challenges.length ? h("div", {}, h("h3", {}, "Every challenge, with its result"), table(["Shift", "Who", "Floor", "Months", "Result", "Month Score", "Why", "Replay"], challenges, { numeric: ["Month Score"] })) : h("p", { class: "muted small" }, "No challenge attempt yet (its own or its group's).")),
 
-      best ? card(`Its rules: best idea ${best.id}${best.verified ? " (verified by the Audit desk)" : ""}`, h("p", {}, h("b", {}, best.hypothesis)),
+      best ? card(`Its own rules: best idea ${best.id}${best.verified ? " (verified by the Audit desk)" : ""}${best.rules?.strategy ? " · trades its own code " + best.rules.strategy : ""}`, h("p", {}, h("b", {}, best.hypothesis)),
         h("ul", { class: "rules" }, ...(best.in_words || []).map((x) => h("li", {}, x))), h("details", {}, h("summary", {}, "The exact rule set the Engine runs"), h("pre", {}, JSON.stringify(best.rules, null, 1)))) : card("Its rules", h("p", { class: "muted" }, "No idea tested yet.")),
 
       best ? card(`Its real results (Engine, ${(best.months || []).length} training months, standard £10,000 account at 1%)`,
@@ -351,6 +525,8 @@ export class FirmView {
 
       g ? card(`Its group: ${g.id} (floor ${g.floor})`, h("div", { class: "row" }, ...g.members.map((m) => { const mid = m.id || m; return h("button", { class: `chip ${mid === id ? "on" : ""}`, type: "button", onclick: () => this.openAgent(mid) }, m.name || this.nameOf(mid)); })),
         g.strategy_idea ? h("div", {}, h("p", {}, h("b", {}, `Group strategy ${g.strategy_idea.id}: `), g.strategy_idea.hypothesis), h("ul", { class: "rules" }, ...(g.strategy_idea.in_words || []).map((x) => h("li", {}, x)))) : h("p", { class: "muted" }, "No group strategy agreed yet (it takes at least 3 members with tested ideas)."),
+        (g.team_rules || []).length ? h("div", {}, h("p", {}, h("b", {}, "The team's own rules (agreed in its meeting):")), h("ul", { class: "rules" }, ...g.team_rules.map((x) => h("li", {}, x)))) : null,
+        (g.team_code || []).length ? h("details", {}, h("summary", {}, `Team strategy code (${g.team_code.length})`), ...g.team_code.map((x) => this.strategyNote(x))) : null,
         Object.keys(g.credits || {}).length ? h("p", { class: "muted small" }, "Credited: " + Object.entries(g.credits).map(([k, v]) => `${this.nameOf(k)} (${(v || []).join(", ")})`).join("; ")) : null,
         h("p", { class: "muted small" }, "Group progress to the next level:"), progressBars(g.progress),
         (g.minutes || []).length ? h("div", { class: "row" }, ...g.minutes.slice(-4).map((m) => h("button", { class: "secondary small", onclick: () => this.openDoc(m, () => this.openAgent(id)) }, m.split("/").pop().replace(".md", "")))) : null) : null,
@@ -363,15 +539,66 @@ export class FirmView {
         x.code ? h("span", { class: x.code.queued ? "muted" : "warnc" }, x.code.queued ? `Handed in code: ${x.code.name} (${x.code.timeframe}M) — sent to the sandbox` : `Code not accepted: ${(x.code.problems || []).join("; ")}`) : null,
         x.next ? h("span", { class: "d" }, `next: ${x.next}`) : null, x.unverified_numbers_flagged?.length ? h("span", { class: "warnc" }, `numbers not found in the Engine's output were flagged: ${x.unverified_numbers_flagged.join(", ")}`) : null))),
 
-      (file.code?.features?.length || file.code?.rejected?.length) ? h("details", {}, h("summary", {}, `Code it wrote (${file.code.features.length} in use, ${file.code.rejected.length} rejected)`),
+      (file.code?.strategies?.length || file.code?.strategies_rejected?.length) ? h("details", { open: true }, h("summary", {}, `Strategy code it wrote (${(file.code.strategies || []).filter((x) => x.status === "active").length} in use, ${(file.code.strategies_rejected || []).length} rejected)`),
+        ...(file.code.strategies || []).map((x) => this.strategyNote(x)),
+        ...(file.code.strategies_rejected || []).map((x) => h("div", { class: "note" }, h("b", { class: "bad" }, `${x.name} · rejected by the sandbox`), h("span", {}, (x.problems || []).join("; ")), h("pre", {}, x.source || "")))) : null,
+
+      (file.code?.features?.length || file.code?.rejected?.length) ? h("details", {}, h("summary", {}, `Coded features it wrote (${file.code.features.length} in use, ${file.code.rejected.length} rejected)`),
         ...file.code.features.map((x) => h("div", { class: "note" }, h("b", {}, `${x.id} · ${x.name} · ${x.timeframe}M bars · ${x.status}`), h("span", {}, x.description || ""), h("span", { class: "muted" }, `Sandbox: no look-ahead (${x.lookahead_test?.cuts ?? "?"} cut tests), a value for ${num(x.usable, 0)} signals. Median ${x.quantiles?.p50}, 10th-90th percentile ${x.quantiles?.p10} to ${x.quantiles?.p90}.`), h("pre", {}, x.source || ""))),
         ...file.code.rejected.map((x) => h("div", { class: "note" }, h("b", { class: "bad" }, `${x.name} · rejected by the sandbox`), h("span", {}, (x.problems || []).join("; ")), h("pre", {}, x.source || "")))) : null,
 
-      h("details", {}, h("summary", {}, `All its ideas (${(file.ideas || []).length})`), table(["Id", "Cycle", "Kind", "Hypothesis", "Sets", "£", "Avg R", "Score"], (file.ideas || []).slice().reverse().map((i) => ({ Id: i.id + (i.verified ? " ✓" : ""), Cycle: i.cycle, Kind: i.kind, Hypothesis: i.hypothesis, Sets: i.summary?.sets, "£": money(i.summary?.pnl_gbp), "Avg R": signed(i.summary?.avg_r, 3), Score: num(i.summary?.month_score, 1) })), { numeric: ["Sets", "£", "Avg R", "Score"] })),
+      h("details", {}, h("summary", {}, `All its ideas (${(file.ideas || []).length})`), table(["Id", "Shift", "Kind", "Hypothesis", "Sets", "£", "Avg R", "Score"], (file.ideas || []).slice().reverse().map((i) => ({ Id: i.id + (i.verified ? " ✓" : ""), Shift: i.cycle, Kind: i.kind, Hypothesis: i.hypothesis, Sets: i.summary?.sets, "£": money(i.summary?.pnl_gbp), "Avg R": signed(i.summary?.avg_r, 3), Score: num(i.summary?.month_score, 1) })), { numeric: ["Sets", "£", "Avg R", "Score"] })),
 
       h("p", { class: "help" }, `Where every number comes from: data version ${file.data_version || "—"}; `, link(file.where_it_lives?.file, "this file"), ", ", link(file.where_it_lives?.library, "the library (every idea ever tested)"), ", ", link(file.where_it_lives?.notes, "its research notes"),
         (file.where_it_lives?.replays || []).length ? ", challenge records: " : "", ...(file.where_it_lives?.replays || []).slice(-4).flatMap((r, i) => [i ? ", " : "", link(r, r.split("/").pop())]), ". Open in GitHub (private repo)."),
     ));
+  }
+
+  // ── rules and code the agents wrote ─────────────────────────────────────────────────────────────────────────────
+  strategyNote(x) {
+    const b = x.best;
+    return h("div", { class: "note" }, h("b", {}, `${x.id} · ${x.name} · ${x.timeframe}M ${x.instrument || ""} · ${x.status}`), h("span", {}, x.description || ""),
+      h("span", { class: "muted" }, `Its code gives ${num(x.entries, 0)} signals over the whole price history (${num(x.longs, 0)} long, ${num(x.shorts, 0)} short), ${num(x.own_exits, 0)} closed by its own exit · targets ${(x.targets || []).join(" / ")} R · `
+        + `sandbox: no look-ahead (${x.lookahead_test?.cuts ?? "?"} cut tests)${x.uses_original ? " · built on the original with changed inputs" : ""}`),
+      b ? h("span", { class: (b.pnl_gbp || 0) > 0 ? "good" : "muted" }, `Best tested result so far, on the practice months (${b.idea}): ${b.pips > 0 ? "+" : ""}${num(b.pips, 0)} pips, ${b.win_rate_pct == null ? "—" : num(b.win_rate_pct, 1) + "%"} wins, ${num(b.sets, 0)} trades, ${money(b.pnl_gbp)}, avg R ${signed(b.avg_r, 3)}`) : h("span", { class: "muted" }, "Not tested yet: the Engine tests it at the start of the next shift."),
+      (x.problems || []).length ? h("span", { class: "bad" }, (x.problems || []).join("; ")) : null,
+      x.source ? h("pre", {}, x.source) : null);
+  }
+
+  async openStrategy(x) {
+    openModal(h("p", { class: "muted" }, `Opening ${x.id}…`));
+    try {
+      const owner = String(x.owner_id || "");
+      const member = owner.startsWith("G") ? this.firm.floors && Object.values(this.firm.floors).flatMap((fl) => fl.groups || []).find((g) => g.id === owner)?.members?.[0] : owner;
+      const file = member ? await gh.getJson(state.token, state.owner, `firm/agents/${member}.json`) : null;
+      const full = (owner.startsWith("G") ? file?.group?.team_code : file?.code?.strategies)?.find((s2) => s2.id === x.id) || x;
+      openModal(h("div", { class: "stack" }, h("h2", {}, `${x.id}: ${x.name}`), h("p", { class: "muted" }, owner.startsWith("G") ? `Team code: written by group ${owner} in its meeting, shift ${x.cycle ?? "?"}.` : `Written by ${x.owner_name || owner}${x.group_id ? " (group " + x.group_id + ")" : ""}, shift ${x.cycle ?? "?"}.`),
+        this.strategyNote(full), owner.startsWith("A") ? h("div", { class: "row" }, h("button", { class: "secondary", onclick: () => this.openAgent(owner) }, `Open ${x.owner_name || owner}'s file`)) : null));
+    } catch (e) { openModal(h("p", { class: "error" }, e.message)); }
+  }
+
+  codePage() {
+    const f = this.firm, st = f.strategies || { active: [], waiting: 0, rejected: 0 }, feats = f.features || {};
+    const cards = (st.active || []).slice().sort((a, b) => (b.best?.pips ?? -1e9) - (a.best?.pips ?? -1e9));
+    const rows = cards.map((x) => ({ Id: x.id, Name: x.name, By: x.owner_name || x.owner_id, Chart: `${x.timeframe}M`, Signals: num(x.entries, 0), Trades: x.best ? num(x.best.sets, 0) : "—", Pips: x.best ? num(x.best.pips, 0) : "—",
+      "Win %": x.best?.win_rate_pct == null ? "—" : num(x.best.win_rate_pct, 1), "£": x.best ? money(x.best.pnl_gbp) : "—", "From the original": x.uses_original ? "yes" : "", _x: x }));
+    const tbl = table(["Id", "Name", "By", "Chart", "Signals", "Trades", "Pips", "Win %", "£", "From the original"], rows, { numeric: ["Signals", "Trades", "Pips", "Win %", "£"] });
+    tbl.querySelectorAll("tbody tr").forEach((tr, i) => { tr.style.cursor = "pointer"; tr.addEventListener("click", () => this.openStrategy(rows[i]._x)); });
+    const groups = Object.values(f.floors || {}).flatMap((fl) => (fl.groups || []).map((g) => ({ ...g, floorLevel: fl.level }))).filter((g) => (g.team_rules || []).length || g.strategy);
+    const teams = groups.map((g) => h("div", { class: "note" }, h("b", {}, `Group ${g.id} · ${g.floorLevel}${g.own_code ? " · trades its own code" : ""}`),
+      h("span", { class: "muted" }, g.strategy ? `strategy ${g.strategy}${g.month_score != null ? " · Month Score " + num(g.month_score, 1) : ""}` : "no group strategy yet"),
+      (g.team_rules || []).length ? h("ul", { class: "rules" }, ...g.team_rules.map((x) => h("li", {}, x))) : h("span", { class: "muted" }, "No rules written down yet (they are written in the group's meeting)."),
+      h("div", { class: "row" }, h("button", { class: "secondary small", onclick: () => this.openRoom({ kind: "group", floor: Object.entries(f.floors).find(([, fl]) => (fl.groups || []).some((x) => x.id === g.id))?.[0] | 0, group: { data: g } }) }, "Open the group"))));
+    const flist = (feats.active || []).map((x) => h("div", { class: "item", onclick: () => this.openAgent(x.agent_id) }, h("span", {}, h("span", { class: "t" }, `${x.id} · ${x.name}`), h("span", { class: "d" }, ` ${x.timeframe}M bars · by ${x.agent_name} · a value for ${num(x.usable, 0)} signals`))));
+    return h("div", { class: "stack" },
+      card("How the agents make their own rules and code",
+        h("p", {}, "Every agent writes its own rules: which signals to trade, when, and how to exit. An agent can also write its own strategy code, its own entries and exits, either starting from the original indicator (it can read the code and run it again with changed inputs) or entirely its own. Teams agree their own rules in their meeting and can hand in team code."),
+        h("p", { class: "help" }, `What they can read: ${(f.code_room || []).map((k) => CODE_ROOM[k] || k).join("; ") || "the original indicator, your Waves rules and the Engine's rule code"}. What happens to code they write: it is never run where the API key is. A separate job with no secrets and no network runs it and proves it does not look ahead; only then does the Engine test it, with the same price model, challenges and Audit desk as everything else.`),
+        h("div", { class: "stats" }, stat("Strategy code in use", cards.length, `${st.waiting ?? 0} waiting for the sandbox`), stat("Rejected by the sandbox", st.rejected ?? 0, "look-ahead, too few trades, bad stops…"),
+          stat("Coded features in use", (feats.active || []).length, `${feats.waiting ?? 0} waiting · ${feats.rejected ?? 0} rejected`), stat("Teams with written rules", groups.filter((g) => (g.team_rules || []).length).length, `of ${Object.values(f.floors || {}).reduce((n, fl) => n + (fl.groups || []).length, 0)} groups`))),
+      card("Strategy code written by agents and teams (tap one to read it)", cards.length ? h("p", { class: "help" }, "Signals: how many trades the code itself opens over the whole price history. Trades, pips, win % and £: its best tested result so far, on the practice months.") : null, cards.length ? tbl : h("p", { class: "muted" }, f.cycle ? "No strategy code has passed the sandbox yet." : "Nothing yet: the firm has not run a shift.")),
+      card("The teams' own rules", teams.length ? h("div", {}, ...teams) : h("p", { class: "muted" }, "No team has met yet. A team meets once at least three of its five members have a tested idea.")),
+      card("Coded features (a number per bar that rules can filter on)", flist.length ? h("div", { class: "list" }, ...flist) : h("p", { class: "muted" }, "No coded feature has passed the sandbox yet.")));
   }
 
   async openChallenge(path, back = null) {
@@ -384,7 +611,7 @@ export class FirmView {
     const rows = Object.entries(rec.per_month || {}).map(([m, v]) => ({ Month: m, Sets: v.values?.sets ?? 0, "In profit": tick(v.money), "£": money(v.values?.pnl_gbp), Pips: num(v.values?.pips, 0), need: num(v.values?.pips_needed, 0), "Pips ✓": tick(v.pips), "R:R": num(v.values?.reward_to_risk, 2), "R:R ✓": tick(v.reward_to_risk), "DD %": pct(v.values?.worst_drawdown_pct), "DD ✓": tick(v.drawdown), Passed: tick(v.passed) }));
     openModal(h("div", { class: "stack" },
       back ? h("button", { class: "link", onclick: back }, "← back") : null,
-      h("h2", {}, `${who}: floor ${rec.floor} challenge, cycle ${rec.cycle} `, badge(rec.passed ? "passed" : "not passed", rec.passed ? "good" : "bad")),
+      h("h2", {}, `${who}: floor ${rec.floor} challenge, shift ${rec.cycle} `, badge(rec.passed ? "passed" : "not passed", rec.passed ? "good" : "bad")),
       h("p", { class: "muted" }, `${rec.instrument || ""} · months ${(rec.months || []).join(", ")} (never tested on before) · strategy ${rec.idea_id}${rec.hypothesis ? ": " + rec.hypothesis : ""}`),
       rec.trial_mode ? h("p", { class: "warnc" }, "Trial mode: provisional (the price data had not passed the match check).") : null,
       h("h3", {}, "The challenge months, day by day, on the real daily candles"), box,
@@ -409,7 +636,7 @@ export class FirmView {
       let latest = null;
       try { latest = await gh.getJson(state.token, state.owner, `firm/discussions/floor${room.floor}.json`); } catch { /* none yet */ }
       openModal(h("div", { class: "stack" }, h("h2", {}, `Floor ${room.floor} discussion room`), h("p", {}, `Chaired by ${this.firm.managers?.[String(room.floor)]?.name || "the floor manager"}. Everyone on the floor talks ideas through using only their report cards; any number quoted is checked against the Engine and unverified claims are flagged. The takeaways go into every agent's next prompt on this floor.`),
-        latest?.takeaways?.length ? h("div", {}, h("h3", {}, `Latest takeaways (cycle ${latest.cycle})`), h("ul", { class: "rules" }, ...latest.takeaways.map((x) => h("li", {}, x)))) : h("p", { class: "muted" }, "No discussion has been held on this floor yet."),
+        latest?.takeaways?.length ? h("div", {}, h("h3", {}, `Latest takeaways (shift ${latest.cycle})`), h("ul", { class: "rules" }, ...latest.takeaways.map((x) => h("li", {}, x)))) : h("p", { class: "muted" }, "No discussion has been held on this floor yet."),
         names.length ? h("div", { class: "list" }, ...names.map((x) => h("div", { class: "item", onclick: () => this.openDoc(`firm/discussions/${x}`) }, h("span", { class: "t" }, x)))) : null));
       return;
     }
@@ -428,8 +655,8 @@ export class FirmView {
         h("p", { class: "muted" }, `Engine on training months: ${gf.strategy_idea.summary?.sets ?? 0} sets, ${money(gf.strategy_idea.summary?.pnl_gbp)}, ${num(gf.strategy_idea.summary?.pips, 0)} pips, avg R ${signed(gf.strategy_idea.summary?.avg_r, 3)}, Month Score ${num(gf.strategy_idea.summary?.month_score, 1)}.`))
         : h("p", { class: "muted" }, g.strategy ? `Group strategy ${g.strategy} · Month Score ${num(g.month_score, 1)}.` : "No group strategy agreed yet (it takes at least 3 members with tested ideas)."),
       card(`Challenge progress: to ${g.progress?.to || "the next level"}`, h("p", { class: "help" }, this.firm.floors?.[String(room.floor)]?.challenge?.text || ""), progressBars(g.progress), g.progress?.note ? h("p", { class: "muted small" }, g.progress.note) : null),
-      g.screen ? h("div", {}, h("h3", {}, `On the room's screen: its latest challenge (floor ${g.screen.floor}, cycle ${g.screen.cycle}) — ${g.screen.passed ? "passed" : "not passed"}`), box) : h("p", { class: "muted" }, `${g.challenges} challenge attempt(s) so far.`),
-      ch.length ? table(["Cycle", "Floor", "Months", "Result", "Why", "Replay"], ch.map((c) => ({ Cycle: c.cycle, Floor: c.floor, Months: (c.months || []).join(", "), Result: h("span", { class: c.passed ? "good" : "bad" }, c.passed ? "passed" : "not passed"), Why: (c.reasons || []).join("; "),
+      g.screen ? h("div", {}, h("h3", {}, `On the room's screen: its latest challenge (floor ${g.screen.floor}, shift ${g.screen.cycle}) — ${g.screen.passed ? "passed" : "not passed"}`), box) : h("p", { class: "muted" }, `${g.challenges} challenge attempt(s) so far.`),
+      ch.length ? table(["Shift", "Floor", "Months", "Result", "Why", "Replay"], ch.map((c) => ({ Shift: c.cycle, Floor: c.floor, Months: (c.months || []).join(", "), Result: h("span", { class: c.passed ? "good" : "bad" }, c.passed ? "passed" : "not passed"), Why: (c.reasons || []).join("; "),
         Replay: c.replay ? h("button", { class: "secondary small", onclick: () => this.openChallenge(c.replay, () => this.openRoom(room)) }, "▶ Watch") : "—" }))) : null));
     if (g.screen?.replay) { try { const rec = await gh.getJson(state.token, state.owner, g.screen.replay); if (rec && box.isConnected) new ChallengeReplay(box, rec); } catch { /* the table above still shows the result */ } }
   }

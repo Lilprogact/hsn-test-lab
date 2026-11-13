@@ -3,8 +3,9 @@
 // and a discussion room each, then the Audit desk and the CEO's office, with a lift shaft down the side.
 //
 // All 100 agents are always in it, each at its own desk: a figure in its level's colour with a level number, a mood
-// face, its name, and three small bars for its progress to the next level (Day Score, pips, risk to reward: the
-// share of its months that meet each of those checks, straight from the Engine).
+// face, its name, and four small bars for its progress to the next level (months in profit, pips, risk to reward and
+// win rate: the share of its months that meet each of those checks, straight from the Engine). The agent with the
+// most pips has a star on its desk and the one with the best win rate a ring - both from real results.
 //
 // Nothing moves unless something real happened. Movement comes from two places only:
 //   * status/firm_live.json while a cycle runs (who is thinking, researching, coding, testing, in a meeting, at audit)
@@ -14,7 +15,7 @@
 // With animations off the same scene is drawn still and events are applied without motion.
 
 export const LEVEL_COLORS = { 1: "#5aa9ff", 2: "#3fd1c9", 3: "#35d07f", 4: "#f5b942", 5: "#b784ff" };
-export const BAR_COLORS = { day: "#35d07f", pips: "#f5b942", rr: "#b784ff" };
+export const BAR_COLORS = { day: "#35d07f", pips: "#f5b942", rr: "#b784ff", win: "#5aa9ff" };
 const LEVEL_NAMES = { 1: "Analysts", 2: "Associates", 3: "Vice Presidents", 4: "Directors", 5: "Managing Directors" };
 const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
 const CELL_H = 86, HEAD_H = 20, ROOM_H = HEAD_H + CELL_H + 4, LABEL_H = 22;      // 86: headroom for two heights of status bubble above the desks
@@ -39,7 +40,7 @@ export class Building {
     this.effects = []; this.flashes = []; this.banner = null; this.auditing = null;
     this.queue = []; this.nextAt = 0; this.speed = 1; this.mode = "idle";   // idle | live | replay
     this.seenLive = new Set(); this.liveCycle = null;
-    this.selected = null; this.firm = null; this.live = null;
+    this.selected = null; this.firm = null; this.live = null; this.stars = { pips: null, win: null };
     this.visible = true; this.dead = false; this.last = performance.now(); this.clock = 0;
     this._tap = (e) => this.tap(e);
     canvas.addEventListener("click", this._tap);
@@ -122,6 +123,9 @@ export class Building {
     return { x: room.x + 18 + col * gap, y: room.virtual ? room.y + room.h - 1 : room.y + room.h - 14 - row * 34 };
   }
 
+  /** Whose desk carries the star (most pips) and the ring (best win rate). Ids from the firm's own numbers, or null. */
+  setStars(stars) { this.stars = { pips: stars?.pips || null, win: stars?.win || null }; }
+
   // ── data ────────────────────────────────────────────────────────────────────────────────────────────────────────
   /** The firm's current truth (firm/firm.json) and, when there is one, the live status of a running cycle. */
   setData(firm, live) {
@@ -186,7 +190,7 @@ export class Building {
     }
     this.layout(); this.snapAll();
     this.queue = [...(replay.events || [])]; this.nextAt = this.clock + 0.6;
-    this.say(`Replaying cycle ${replay.cycle}: ${this.replayTotal} real events`);
+    this.say(`Replay of shift ${replay.cycle}: ${this.replayTotal} real events`);
   }
 
   stopReplay(silent = false) {
@@ -208,8 +212,16 @@ export class Building {
     const ids = this.members(e);
     switch (e.kind) {
       case "thinking": { const a = A(e.agent); if (a) { a.status = "thinking"; a.detail = ""; a.hold = this.clock + 1.2; } break; }
-      case "tested": { const a = A(e.agent); if (a) { a.status = "testing"; a.hold = this.clock + 0.8; if (e.month_score != null) chip(e.agent, `${e.month_score > 0 ? "+" : ""}${Math.round(e.month_score)}`, e.month_score > 0 ? "#35d07f" : "#ff5c5c"); } break; }
-      case "coded": chip(e.agent, "</> code", "#b784ff", 3); break;
+      case "tested": {
+        const a = A(e.agent) || A((this.groups.get(e.group)?.seats || []).find(Boolean));
+        if (a) {
+          a.status = "testing"; a.hold = this.clock + 0.8;
+          const v = e.pips != null ? e.pips : e.month_score;
+          if (v != null) chip(a.id, `${e.by === "engine search" ? "⚙ " : ""}${v > 0 ? "+" : ""}${Math.round(v)}${e.pips != null ? "p" : ""}${e.win != null && e.pips != null ? " " + Math.round(e.win) + "%" : ""}`, v > 0 ? "#35d07f" : "#ff5c5c", e.by === "engine search" ? 1.4 : 2.2);
+        }
+        break;
+      }
+      case "coded": { const id = e.agent || (this.groups.get(e.group)?.seats || []).find(Boolean); if (id) chip(id, e.what === "strategy" ? "</> own strategy" : e.what === "team strategy" ? "</> team code" : "</> feature", "#b784ff", 3.2); if (e.group && animate) this.flash(e.group, "#b784ff", 1.2); break; }
       case "turn_failed": break;
       case "meeting_start": { const floor = e.floor || this.groups.get(e.group)?.floor, room = this.rooms.find((r) => r.kind === "discussion" && r.floor === floor);
         ids.forEach((id) => { const a = A(id); a.away = floor === 1 && !e.discussion ? { huddle: true, sticky: true } : { room, sticky: true }; a.status = "in_meeting"; a.detail = e.discussion ? "floor discussion" : "group meeting"; a.hold = this.clock + 30; }); break; }
@@ -307,7 +319,7 @@ export class Building {
       this.nextAt = this.clock + wait;
       if (this.mode === "replay") { try { this.onProgress?.(this.replayTotal - this.queue.length, this.replayTotal, e); } catch { /* a caption must never stop the replay */ } }
     }
-    if (this.mode === "replay" && !this.queue.length && this.clock >= this.nextAt + 1.5 && !this.rides.length) { this.mode = "idle"; this.say(`Cycle ${this.replayCycle}: end of the replay`, 4); const done = this.onEnd; this.finish(); done?.(); }
+    if (this.mode === "replay" && !this.queue.length && this.clock >= this.nextAt + 1.5 && !this.rides.length) { this.mode = "idle"; this.say(`Shift ${this.replayCycle}: end of the replay`, 4); const done = this.onEnd; this.finish(); done?.(); }
     this.runRides();
     this.lift.y += (this.lift.ty - this.lift.y) * clamp(dt * sp * 3.2, 0, 1);
     const speed = 150 * sp;
@@ -444,12 +456,22 @@ export class Building {
     c.font = `10px ${FONT}`; c.fillStyle = "#cfe7da";
     let name = first(a.name); while (name.length > 2 && c.measureText(name).width > w) name = name.slice(0, -1);
     c.fillText(name, s.x - c.measureText(name).width / 2, s.y + 19);
-    // progress to the next level: Day Score, pips, risk to reward (share of its months that meet each check)
+    // progress to the next level: months in profit, pips, risk to reward, win rate (share of its months that meet each)
     const p = a.prog, has = p && p.basis && p.basis !== "none";
-    [["day", 23], ["pips", 27.5], ["rr", 32]].forEach(([k, dy]) => {
-      c.fillStyle = "#15281f"; c.fillRect(left, s.y + dy, w, 3);
-      if (has) { c.fillStyle = BAR_COLORS[k]; c.globalAlpha = p.basis === "challenge" ? 1 : 0.62; c.fillRect(left, s.y + dy, w * clamp((p[k]?.pct || 0) / 100, 0, 1), 3); c.globalAlpha = 1; }
+    [["day", 22], ["pips", 25.5], ["rr", 29], ["win", 32.5]].forEach(([k, dy]) => {
+      c.fillStyle = "#15281f"; c.fillRect(left, s.y + dy, w, 2.5);
+      if (has) { c.fillStyle = BAR_COLORS[k]; c.globalAlpha = p.basis === "challenge" ? 1 : 0.62; c.fillRect(left, s.y + dy, w * clamp((p[k]?.pct || 0) / 100, 0, 1), 2.5); c.globalAlpha = 1; }
     });
+    // the firm's two marks, from real results: a star for the most pips, a ring for the best win rate
+    if (this.stars.pips === a.id) this.star(left + 6, s.y - 17, 5, "#f5b942");
+    if (this.stars.win === a.id) { c.strokeStyle = "#5aa9ff"; c.lineWidth = 1.4; c.beginPath(); c.arc(left + (this.stars.pips === a.id ? 18 : 6), s.y - 17, 4.2, 0, 6.283); c.stroke(); c.beginPath(); c.arc(left + (this.stars.pips === a.id ? 18 : 6), s.y - 17, 1.4, 0, 6.283); c.stroke(); c.lineWidth = 1; }
+  }
+
+  star(x, y, r, color) {
+    const c = this.ctx;
+    c.fillStyle = color; c.beginPath();
+    for (let i = 0; i < 10; i++) { const ang = -Math.PI / 2 + i * Math.PI / 5, rad = i % 2 ? r * 0.45 : r; c[i ? "lineTo" : "moveTo"](x + Math.cos(ang) * rad, y + Math.sin(ang) * rad); }
+    c.closePath(); c.fill();
   }
 
   drawAgent(a) {
