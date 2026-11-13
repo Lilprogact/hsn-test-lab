@@ -134,6 +134,7 @@ test("every request goes to api.github.com only, with no cookies, no cache and n
     assert.equal(r.init.cache, "no-store");
     assert.equal(r.init.redirect, "error");
     assert.equal(r.init.referrerPolicy, "no-referrer");
+    assert.ok(Object.keys(r.headers).every((k) => ["accept", "authorization", "content-type"].includes(k)), `only headers GitHub lets a browser send: ${Object.keys(r.headers)}`);
     assert.ok(!r.url.includes("?") || r.url.endsWith("?per_page=100"), "nothing but the page size in a query string");
   }
 });
@@ -397,6 +398,11 @@ test("the site's safety header lets it talk to api.github.com and nothing else, 
   const scripts = [...html.matchAll(/<script\b([^>]*)>/g)].map((m) => m[1]);
   assert.deepEqual(scripts, [' type="module" src="js/app.js"']);
   assert.doesNotMatch(html, /\son[a-z]+\s*=/i, "no inline event handlers");
+  for (const file of ["github.js", "drop.js"]) {
+    const text = readFileSync(new URL(`../js/${file}`, import.meta.url), "utf8");
+    const sent = [...text.matchAll(/["']?(X-[A-Za-z-]+)["']?\s*:/g)].map((m) => m[1]);
+    assert.deepEqual(sent, [], `${file} sends no extra request header that GitHub's cross-origin rules might refuse`);
+  }
   assert.match(html, /data-view="setup"/);
   assert.match(html, /id="view-setup"/);
 });

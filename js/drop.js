@@ -114,7 +114,9 @@ export class DropError extends Error {
 }
 
 async function call(fetchImpl, path, { token = null, method = "GET", body } = {}) {
-  const headers = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
+  // Only headers GitHub's documented cross-origin list allows from a browser (Authorization, Content-Type; Accept is
+  // always allowed). No API-version header: GitHub then uses its default version, which is the one this was written for.
+  const headers = { Accept: "application/vnd.github+json" };
   if (token) headers.Authorization = `Bearer ${token}`;
   // no cookies, no cache, no referrer, and a credential never follows a redirect to another address
   const init = { method, headers, cache: "no-store", credentials: "omit", redirect: "error", referrerPolicy: "no-referrer", mode: "cors" };

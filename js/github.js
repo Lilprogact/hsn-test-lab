@@ -32,10 +32,11 @@ function classify(status, body) {
 export async function api(token, path, { method = "GET", body, raw = false, headers = {} } = {}) {
   const init = {
     method,
+    // Only headers GitHub's documented cross-origin list allows from a browser (Authorization, Content-Type; Accept is
+    // always allowed). No API-version header: GitHub then uses its default version, 2022-11-28, the one this is written for.
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: raw ? "application/vnd.github.raw+json" : "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
       ...headers,
     },
     cache: "no-store",
@@ -137,7 +138,7 @@ export async function getGzipText(token, owner, path, ref = "main") {
   let response;
   try {
     response = await fetch(`${API}/repos/${owner}/${ENGINE_REPO}/contents/${encodePath(path)}?ref=${encodeURIComponent(ref)}&t=${Date.now()}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github.raw+json", "X-GitHub-Api-Version": "2022-11-28" }, cache: "no-store" });
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github.raw+json" }, cache: "no-store" });
   } catch {
     throw new GitHubError("Couldn't reach GitHub. Check your connection.", 0, "network");
   }
@@ -162,7 +163,7 @@ export async function listDir(token, owner, path, ref = "main") {
 /** Download URL for a results file (so a CSV can be opened/downloaded with the token in a fetch, then saved). */
 export async function downloadBlob(token, owner, path, ref = "main") {
   const response = await fetch(`${API}/repos/${owner}/${ENGINE_REPO}/contents/${encodePath(path)}?ref=${encodeURIComponent(ref)}&t=${Date.now()}`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github.raw+json", "X-GitHub-Api-Version": "2022-11-28" },
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github.raw+json" },
     cache: "no-store",
   });
   if (!response.ok) throw classify(response.status, null);
