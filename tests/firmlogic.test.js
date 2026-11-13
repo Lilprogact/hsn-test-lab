@@ -2,7 +2,7 @@
 // the ticker's lines and the token help. Every figure in these tests is made up; none is shown on the site.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PACES, nextShift, readiness, scoreboard, eventLine, tokenHelp, MIN_TRADES_FOR_WIN_RANK, SHIFT, shiftsLeft, shiftPlan, shiftPlanWords, minutesUsedThisMonth } from "../js/firmlogic.js";
+import { PACES, nextShift, readiness, scoreboard, eventLine, tokenHelp, MIN_TRADES_FOR_WIN_RANK, SHIFT, shiftsLeft, shiftPlan, shiftPlanWords, minutesUsedThisMonth, minutesNote } from "../js/firmlogic.js";
 
 test("the four paces match the engine's schedules", () => {
   assert.deepEqual(Object.keys(PACES), ["6h", "3h", "1h", "nonstop"]);
@@ -90,6 +90,16 @@ test("minutes counted in another month are not this month's", () => {
   assert.equal(minutesUsedThisMonth({ month: "2026-10", minutes_used: 1900 }, now), 0);
   assert.equal(minutesUsedThisMonth(null, now), 0);
   assert.equal(minutesUsedThisMonth({ month: "2027-01", minutes_used: "x" }, new Date("2027-01-02T00:00:00Z")), 0);
+});
+
+test("the plan says what its minutes figure rests on, and says so when that count is old", () => {
+  const now = new Date("2026-11-13T22:00:00Z"), when = (iso) => iso.slice(0, 10);
+  assert.equal(minutesNote({ month: "2026-11", minutes_used: 212.4, checked_at: "2026-11-13T20:00:00Z" }, now, when), " (212 GitHub minutes already used this month, as counted 2026-11-13 UK.)");
+  assert.equal(minutesNote({ month: "2026-11", minutes_used: 2.1, checked_at: "2026-11-08T21:23:14Z" }, now, when),
+    " (2 GitHub minutes already used this month, as counted 2026-11-08 UK. That count is old: every shift recounts before it starts, so each shift's real share may be smaller.)");
+  assert.equal(minutesNote({ month: "2026-10", minutes_used: 900, checked_at: "2026-10-30T00:00:00Z" }, now, when), "", "last month's count is not this month's");
+  assert.equal(minutesNote(null, now, when), "");
+  assert.equal(minutesNote({ month: "2026-11", minutes_used: 0, checked_at: "2026-11-13T20:00:00Z" }, now, when), "");
 });
 
 test("Start waits for price history and says exactly what is missing", () => {

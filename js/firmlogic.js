@@ -61,6 +61,16 @@ export function shiftPlanWords(plan, now = new Date()) {
     + `around ${dayMonthUK(until)}. The firm then waits for the new month. A slower pace or a higher minutes limit lasts longer.`;
 }
 
+/** What the plan's minutes figure rests on: how many were counted and when. An old count is said to be old, because
+ *  every shift recounts before it starts and then works from the real figure. `when` formats a date for the reader. */
+export function minutesNote(minutes, now = new Date(), when = (iso) => iso) {
+  const used = minutesUsedThisMonth(minutes, now);
+  if (!(used > 0) || !minutes.checked_at) return "";
+  const old = now.getTime() - Date.parse(minutes.checked_at) > 36 * 3600000;
+  return ` (${Math.round(used).toLocaleString("en-GB")} GitHub minutes already used this month, as counted ${when(minutes.checked_at)} UK`
+    + `${old ? ". That count is old: every shift recounts before it starts, so each shift's real share may be smaller" : ""}.)`;
+}
+
 /** This month's GitHub minutes as the engine last counted them (status/minutes.json); 0 when that count is from another month. */
 export function minutesUsedThisMonth(minutes, now = new Date()) {
   const month = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;

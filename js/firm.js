@@ -8,7 +8,7 @@ import { state, startRun, liveText } from "./app.js";
 import { ukDateTime } from "./clock.js";
 import { h, card, stat, table, badge, field, select, input, money, num, pct, signed, openModal, closeModal, mdLite } from "./ui.js";
 import { Building, LEVEL_COLORS, BAR_COLORS, isRunning } from "./building.js";
-import { PACES, nextShift, readiness, scoreboard, eventLine, tokenHelp, shiftPlan, shiftPlanWords, minutesUsedThisMonth } from "./firmlogic.js";
+import { PACES, nextShift, readiness, scoreboard, eventLine, tokenHelp, shiftPlan, shiftPlanWords, minutesUsedThisMonth, minutesNote } from "./firmlogic.js";
 import { ChallengeReplay } from "./replay.js";
 
 const LEVELS = { 1: "Analyst", 2: "Associate", 3: "Vice President", 4: "Director", 5: "Managing Director" };
@@ -24,8 +24,7 @@ function planLine(pace, mins, fallbackMins) {
   const el = h("p", { class: "help plan-line", role: "status" });
   const paint = () => {
     const now = new Date(), used = minutesUsedThisMonth(state.minutes, now);
-    el.textContent = shiftPlanWords(shiftPlan(pace.value, used, boxNumber(mins, fallbackMins), now), now)
-      + (used > 0 ? ` (${num(used, 0)} GitHub minutes already used this month, as counted ${ukDateTime(state.minutes.checked_at)} UK.)` : "");
+    el.textContent = shiftPlanWords(shiftPlan(pace.value, used, boxNumber(mins, fallbackMins), now), now) + minutesNote(state.minutes, now, ukDateTime);
   };
   pace.addEventListener("change", paint); mins.addEventListener("input", paint); paint();
   return el;
