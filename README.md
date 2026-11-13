@@ -37,14 +37,32 @@ could only start workflows and read results, never change code. The site tells y
   each may work, or the day the month's minutes would run out. The firm paces itself (each shift gets an even share
   of the minutes left) and that line is the engine's own sum (`js/firmlogic.js` `shiftPlan` = the engine's
   `scripts/firm_schedule.py` `shift_plan`; both are tested against the same table of cases). Five pages:
-  * **Company** — a scoreboard (most pips, best win rate with a minimum number of trades and only for ideas in
-    profit, ideas tested, strategy code in use, moves up, AI and minutes used), then the building (original art): all
-    100 agents at their own desks, coloured by level with a level number, a mood face and four bars for their progress
-    to the next level (months in profit, pips, risk to reward, win rate); a star marks the agent with the most pips and
-    a ring the best win rate. Nothing moves unless something real happened: the live status of a running shift, or
-    between shifts a **replay of the last shift's real events on a loop**, always labelled as a replay (it can be
-    switched off under Replay options). Under it, "What just happened": the latest real events in plain words. Tap a
-    desk for that agent's file or a room for its group and its challenge played day by day on the real candles.
+  * **Company** — the firm as a small 2D world (our own pixel-style art, drawn in code: `js/sprites.js` the people,
+    `js/scene.js` the painters, `js/building.js` the logic, `js/palette.js` colours and sizes; no game's or brand's
+    art). A side-on tower under the London sky (day and night by London's clock): the Audit desk and the CEO's office
+    at the top, floors 5 to 2 with two group rooms and a discussion room each, the Analysts' floor with 12 rooms, a
+    lift, and in the basement the Engine, the price history, the code room and the sandbox. All 100 agents are in it,
+    each with a look of its own, a shirt in its level's colour, a mood on its face, its name and four bars for its
+    progress to the next level (months in profit, pips, risk to reward, win rate); a star marks the most pips and a
+    ring the best win rate. **It looks like a game and is not one: nothing is scripted.** What moves is only what
+    really happened, from the live status of a running shift or a shift's recorded events:
+    a test = the idea flies from the agent's screen down to the Engine and the Engine's own numbers come back to the
+    desk; reading the code = it comes up from the code room; code handed in = it goes to the sandbox; a meeting = the
+    group walks (along the floor, by the stairs between rows of rooms) to its discussion room and sits at the table;
+    a challenge = the room's screen comes down and draws the real running total; an audit = the papers go to the
+    Audit desk; a level-up = the lift, a new desk, a celebration; swaps, transfers and new Analysts the same. A room
+    is lit while someone in it is really working; a paused firm sits in the half dark with its sign off. Only the sky,
+    the blinking and the turning of the machines are decoration.
+    Two pictures of the same world: **the camera** (first on the page) goes to wherever the latest real event is,
+    with one line saying what it is and a badge saying LIVE, REPLAY of shift N, PAUSED or BETWEEN SHIFTS; with
+    nothing to show it walks round the building saying what is true there ("The Engine is waiting for price
+    history"). **The whole building** is the map: tap a desk for that agent's file, a room for its group and its
+    challenge played day by day on the real candles, the basement's machines for their pages. Between shifts the last
+    shift's real events are **replayed on a loop**, always labelled as a replay (Replay options switches it off).
+    A scoreboard sits between the two pictures (most pips, best win rate with a minimum number of trades and only
+    for ideas in profit, ideas tested, strategy code in use, moves up, AI and minutes used) and under them
+    "What just happened": the latest real events in plain words. Movement respects the device's reduced-motion
+    setting and can be switched off; the pictures are then still and every event is applied without motion.
   * **People** — a tile per agent: level, best pips and win rate, the four bars; sort by floor, pips, win rate,
     progress, Month Score or name.
   * **Rules & code** — the strategy code agents and teams wrote themselves (tap one to read the code, how the

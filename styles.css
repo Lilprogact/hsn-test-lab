@@ -260,3 +260,5 @@ ol.steps li { margin: 6px 0; }
 @media (max-width: 560px) { .start-btn { width: 100%; } .firm-control { gap: 8px; } }
 .shift-bar { height: 6px; margin: 2px 0 6px; max-width: 420px; }
 .plan-line { margin: 2px 0 8px; padding: 8px 10px; border-left: 3px solid var(--green2); border-radius: 0 10px 10px 0; background: var(--bg2); color: var(--text); }
+.stage-wrap { border: 1px solid var(--line2); border-radius: 12px; overflow: hidden; background: #05090a; line-height: 0; }
+canvas.stage { display: block; width: 100%; touch-action: manipulation; }

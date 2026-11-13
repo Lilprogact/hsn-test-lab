@@ -26,7 +26,8 @@ export const state = {
   coverage: null,        // status/data_coverage.json
   match: null,           // status/data_match.json
   minutes: null,
-  animations: localStorage.getItem("hsn.animations") !== "off",
+  // movement in the building: on, unless it was switched off here or the device asks for reduced motion
+  animations: localStorage.getItem("hsn.animations") ? localStorage.getItem("hsn.animations") !== "off" : !(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches),
   hours: { XAUUSD: MarketHours.defaultFor("XAUUSD"), NAS100: MarketHours.defaultFor("NAS100") },
 };
 

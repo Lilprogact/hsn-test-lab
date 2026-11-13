@@ -130,6 +130,25 @@ export function scoreboard(firm) {
 const n0 = (v) => (v === null || v === undefined || Number.isNaN(+v)) ? "—" : Math.round(+v).toLocaleString("en-GB");
 const pips = (v) => (v === null || v === undefined) ? "" : `${v > 0 ? "+" : ""}${n0(v)} pips`;
 
+// What an agent can read in the code room, in plain words (the engine's names for them are on the left).
+export const CODE_WORDS = { original: "your indicator as the Engine runs it", original_pine: "your indicator's Pine code", chart_maths: "the chart maths it is built from", waves: "your Waves rules",
+  rules_engine: "how the Engine evaluates rules", price_model: "how prices are filled", challenges: "what each challenge checks" };
+
+/** A look at the code or a question to the Engine, in plain words: {text, short} from the engine's own label. */
+export function lookWords(e) {
+  const what = String(e?.what || "");
+  if (e?.tool === "read_code") {
+    const m = what.match(/^reading (\S+)(?: for '(.*)')?$/), key = m ? m[1] : what.replace(/^reading /, "");
+    const name = CODE_WORDS[key] || (/^[SF]\d+/.test(key) ? `its own code ${key}` : key || "the code");
+    return { text: `reads ${name}${m && m[2] ? `, looking for "${m[2]}"` : ""}`, short: `reading ${CODE_WORDS[key] ? key.replaceAll("_", " ") : key || "code"}` };
+  }
+  if (e?.tool === "breakdown") return { text: `asks the Engine for its results ${what || "broken down"}`, short: `asks: ${what || "breakdown"}` };
+  if (e?.tool === "compare_exits") return { text: "asks the Engine to compare ways of exiting", short: "asks: exits" };
+  if (e?.tool === "library") return { text: "reads the firm's library of tested ideas", short: "the library" };
+  if (e?.tool === "next_level") return { text: "checks what the next level needs", short: "next level?" };
+  return { text: `looks something up (${what || e?.tool || "research"})`, short: what || "research" };
+}
+
 /** One real event as one plain line. Returns null for events that are not worth a line of their own. */
 export function eventLine(e, nameOf = (id) => id) {
   if (!e || !e.kind) return null;
@@ -143,6 +162,7 @@ export function eventLine(e, nameOf = (id) => id) {
       return out(`${who}: ${pips(e.pips)}${win}${how}`, e.pips > 0 ? "up" : "down");
     }
     case "thinking": return out(`${who} is thinking`, "dim");
+    case "looked": return out(`${who} ${lookWords(e).text}`, e.tool === "read_code" ? "code" : "dim");
     case "coded": return out(`${who} handed in ${e.what === "strategy" ? "its own strategy code" : e.what === "team strategy" ? "the team's own strategy code" : "a coded feature"}: ${e.name || ""}`, "code");
     case "meeting_start": return out(e.discussion ? `Floor ${e.floor} sits down for its discussion` : `${who} meets to agree its team rules`, "dim");
     case "meeting": return e.discussion ? out(`Floor ${e.floor}'s discussion ends`, "dim")

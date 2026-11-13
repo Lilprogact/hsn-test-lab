@@ -217,15 +217,19 @@ export class FirmView {
     // Company
     this.scoreEl = h("div", { class: "stats scoreboard" });
     const canvas = h("canvas", { "aria-label": "The HSN Capital building with every agent at a desk" });
+    const stage = h("canvas", { class: "stage", "aria-label": "A close view of the building that follows the latest real event" });
     const legend = h("div", { class: "building-legend" },
       ...Object.entries(LEVELS).map(([k, v]) => h("span", {}, h("i", { style: `background:${LEVEL_COLORS[k]}` }), `${k} ${v}`)),
       h("span", { class: "sep" }, "bars under each name:"), h("span", {}, h("i", { style: `background:${BAR_COLORS.day}` }), "months in profit"), h("span", {}, h("i", { style: `background:${BAR_COLORS.pips}` }), "pips"),
       h("span", {}, h("i", { style: `background:${BAR_COLORS.rr}` }), "risk to reward"), h("span", {}, h("i", { style: `background:${BAR_COLORS.win}` }), "win rate"),
-      h("span", { class: "sep" }, "★ most pips · ◎ best win rate · bright bars = its challenge on unseen months, faded = practice"));
+      h("span", { class: "sep" }, "★ most pips · ◎ best win rate · bright bars = its challenge on unseen months, faded = practice · a lit room = someone in it is working"));
     this.replayBox = h("div", { class: "toolbar replay-bar" });
     this.tickerEl = h("div", { class: "ticker", "aria-live": "off" });
-    const company = h("div", { class: "stack", "data-panel": "company" }, this.scoreEl,
-      card(`The building: all ${n} agents (every movement is a real event)`, h("div", { class: "building-wrap" }, canvas), legend, this.replayBox),
+    const company = h("div", { class: "stack", "data-panel": "company" },
+      card("The camera: wherever something real is happening", h("div", { class: "stage-wrap" }, stage),
+        h("p", { class: "help" }, "Not a game: nothing here is scripted. Every walk, meeting, lift ride and number is a recorded event or the Engine's own result; an idea flies down to the Engine and its result flies back. Only the sky (London time) and the blinking are decoration. Tap a person to open their file.")),
+      this.scoreEl,
+      card(`The whole building: all ${n} agents (tap a desk or a room)`, h("div", { class: "building-wrap" }, canvas), legend, this.replayBox),
       card("What just happened", h("p", { class: "help" }, "The latest real events, newest first. Each test is the Engine's result on real price history; nothing here is written by the AI."), this.tickerEl));
     // the other pages are built when first opened (they are long)
     this.panels = { company, people: null, code: null, records: null, ceo: null };
@@ -234,7 +238,8 @@ export class FirmView {
     this.paintControl(); this.paintScore(); this.paintTicker(); this.paintReplay();
     if (this.page !== "company") this.go(this.page);
     requestAnimationFrame(() => {
-      this.building = new Building(canvas, { animations: state.animations, onAgent: (id) => this.openAgent(id), onRoom: (room) => this.openRoom(room) });
+      this.building = new Building(canvas, { animations: state.animations, onAgent: (id) => this.openAgent(id), onRoom: (room) => this.openRoom(room), describe: (e) => this.eventText(e) });
+      this.building.attachStage(stage);
       this.building.setStars(scoreboard(f).stars);
       this.building.setData(f, this.live);
       this.building.applyLive(this.live);
@@ -289,7 +294,7 @@ export class FirmView {
     const playing = this.building?.mode === "replay";
     const pick = select(names.map((x) => [x, `shift ${parseInt(x.replace(/\D/g, ""), 10)}`]), this.replayPick || names[0], { class: "small", "aria-label": "Shift to replay" });
     pick.addEventListener("change", () => { this.replayPick = pick.value; if (this.building?.mode === "replay") { this.building.stopReplay(true); this.startReplay(pick.value); } });
-    const speed = select([[1, "1×"], [2, "2×"], [4, "4×"], [8, "8×"], [16, "16×"]], this.replaySpeed || 4, { class: "small", "aria-label": "Replay speed" });
+    const speed = select([[1, "1×"], [2, "2×"], [4, "4×"], [8, "8×"], [16, "16×"]], this.replaySpeed || 2, { class: "small", "aria-label": "Replay speed" });
     speed.addEventListener("change", () => { this.replaySpeed = +speed.value; if (this.building) this.building.speed = +speed.value; });
     this.replayNote = h("span", { class: "muted small" }, note || (isRunning(this.live) ? "a shift is running: the building is live" : !state.animations ? "animations are off (the picture is still)" : playing ? "" : "replay is off"));
     const loop = h("label", { class: "chip" }, h("input", { type: "checkbox", checked: this.loop || null, onchange: (e) => { this.loop = e.target.checked; localStorage.setItem("hsn.replayloop", this.loop ? "on" : "off"); if (this.loop) this.startLoop(); else { this.stopLoop(); this.paintReplay(); } } }), "replay the last shift between shifts");
@@ -312,7 +317,7 @@ export class FirmView {
       this.replayCache = this.replayCache || {};
       const rep = this.replayCache[name] || (this.replayCache[name] = await gh.getJson(state.token, state.owner, `firm/replays/${name}`));
       if (!rep || !this.building || this.building.mode === "replay" || isRunning(this.live) || this.page !== "company") return;
-      this.building.playReplay(rep, { speed: this.replaySpeed || 4,
+      this.building.playReplay(rep, { speed: this.replaySpeed || 2,
         onProgress: (i, n, e) => { if (this.replayNote) this.replayNote.textContent = `Replay of shift ${rep.cycle} (real events, ${ukDateTime(rep.finished_at)} UK) · ${i} of ${n} · ${this.eventText(e)}`; },
         onEnd: () => { this.paintReplay(`Replay of shift ${rep.cycle} finished.`); this.paintControl(); if (this.loop) { clearTimeout(this.loopT); this.loopT = setTimeout(() => this.startLoop(), 9000); } } });
       this.paintReplay(`Replay of shift ${rep.cycle}: ${rep.events.length} real events`); this.paintControl();
@@ -623,7 +628,15 @@ export class FirmView {
   }
 
   async openRoom(room) {
-    if (room.kind === "ceo") { this.ceoCard?.scrollIntoView({ behavior: "smooth" }); return; }
+    if (room.kind === "ceo") { this.go("ceo"); return; }
+    if (room.kind === "engine" || room.kind === "data") { this.go("records"); return; }                 // the Engine's and the price history's numbers are on Records
+    if (room.kind === "code" || room.kind === "sandbox") { this.go("code"); return; }                   // what the agents read and wrote
+    if (room.kind === "manager") {
+      const m = this.firm.managers?.[String(room.floor)] || {};
+      openModal(h("div", { class: "stack" }, h("h2", {}, m.name || room.name || "Floor manager"), h("p", {}, `${m.title || "Manager"} of floor ${room.floor} (${LEVELS[room.floor]}s). Chairs the floor's discussions and writes its reports from the Engine's numbers.`),
+        h("div", { class: "row" }, h("button", { class: "primary", onclick: () => { closeModal(); this.go("ceo"); } }, "Ask them a question in the CEO's office"), h("button", { class: "secondary", onclick: () => { closeModal(); this.go("records"); } }, "Their reports"))));
+      return;
+    }
     if (room.kind === "audit") {
       const ev = (this.firm.recent_events || []).filter((e) => e.kind === "audit_start" || e.kind === "audit_failed").slice(-20).reverse();
       openModal(h("div", { class: "stack" }, h("h2", {}, "Audit desk"), h("p", {}, "Re-runs every level-up from scratch through the event-driven simulator (a separately written code path, a different random seed), checks for look-ahead, and re-tests promoted strategies as new data arrives. A disagreement blocks the level-up and is recorded on the idea."),

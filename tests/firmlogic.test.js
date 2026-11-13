@@ -2,7 +2,7 @@
 // the ticker's lines and the token help. Every figure in these tests is made up; none is shown on the site.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PACES, nextShift, readiness, scoreboard, eventLine, tokenHelp, MIN_TRADES_FOR_WIN_RANK, SHIFT, shiftsLeft, shiftPlan, shiftPlanWords, minutesUsedThisMonth, minutesNote } from "../js/firmlogic.js";
+import { PACES, nextShift, readiness, scoreboard, eventLine, tokenHelp, MIN_TRADES_FOR_WIN_RANK, SHIFT, shiftsLeft, shiftPlan, shiftPlanWords, minutesUsedThisMonth, minutesNote, lookWords, CODE_WORDS } from "../js/firmlogic.js";
 
 test("the four paces match the engine's schedules", () => {
   assert.deepEqual(Object.keys(PACES), ["6h", "3h", "1h", "nonstop"]);
@@ -168,4 +168,19 @@ test("a token that cannot read says which permission to add, in steps", () => {
   assert.deepEqual(tokenHelp({ kind: "network" }).steps, []);
   assert.equal(tokenHelp({ message: "odd" }).title, "odd");
   assert.equal(tokenHelp(null).title, "Something went wrong reading the firm's files.");
+});
+
+test("a look at the code or a question to the Engine is said in plain words", () => {
+  const name = (id) => ({ A001: "Joris Coldby" }[id] || id);
+  assert.equal(eventLine({ at: "t", kind: "looked", agent: "A001", tool: "read_code", what: "reading original" }, name).text, "Joris Coldby reads your indicator as the Engine runs it");
+  assert.equal(eventLine({ at: "t", kind: "looked", agent: "A001", tool: "read_code", what: "reading waves for 'stop'" }, name).text, 'Joris Coldby reads your Waves rules, looking for "stop"');
+  assert.equal(eventLine({ at: "t", kind: "looked", agent: "A001", tool: "read_code", what: "reading S0007" }, name).text, "Joris Coldby reads its own code S0007");
+  assert.equal(eventLine({ at: "t", kind: "looked", agent: "A001", tool: "breakdown", what: "by session" }, name).text, "Joris Coldby asks the Engine for its results by session");
+  assert.equal(eventLine({ at: "t", kind: "looked", agent: "A001", tool: "compare_exits", what: "exits" }, name).text, "Joris Coldby asks the Engine to compare ways of exiting");
+  assert.equal(eventLine({ at: "t", kind: "looked", agent: "A001", tool: "library", what: "reading the library" }, name).text, "Joris Coldby reads the firm's library of tested ideas");
+  assert.equal(eventLine({ at: "t", kind: "looked", agent: "A001", tool: "next_level", what: "checking the next level" }, name).text, "Joris Coldby checks what the next level needs");
+  assert.equal(eventLine({ at: "t", kind: "looked", agent: "A001", tool: "read_code", what: "reading original" }, name).cls, "code");
+  assert.equal(lookWords({ tool: "read_code", what: "reading price_model" }).short, "reading price model");
+  assert.equal(lookWords({ tool: "something_new", what: "odd" }).text, "looks something up (odd)", "an unknown look is still said, never dropped");
+  assert.deepEqual(Object.keys(CODE_WORDS), ["original", "original_pine", "chart_maths", "waves", "rules_engine", "price_model", "challenges"], "the engine's code room, name for name");
 });
