@@ -73,8 +73,9 @@ never is: this repo or its history, any file, a log or the console, a URL, `loca
 cookies / IndexedDB, any address other than `api.github.com`, any outside script (the two encryption libraries are
 bundled in `js/vendor/` and pinned to their upstream files byte for byte; see `js/vendor/README.md`). The boxes are
 `type="password"` (secure text entry: no keyboard learning, no suggestions) with autofill, autocorrect,
-autocapitalise and spellcheck off, and they are not inside a form. Boxes left untouched for 30 minutes are emptied,
-and so are they when the site locks. The only thing kept on the device is the list of names
+autocapitalise and spellcheck off, and they are not inside a form. Boxes left untouched for 60 minutes are emptied,
+and so are they on a tap of Lock or a reload; when the site locks itself after 30 idle minutes they stay where they
+are, out of sight and out of reach behind the password. The only thing kept on the device is the list of names
 with Saved / Failed and the time.
 
 **Why a one-time key and not the site token.** The site token stays on the device for 90 days. If it could also

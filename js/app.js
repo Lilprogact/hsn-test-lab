@@ -83,7 +83,7 @@ document.getElementById("forgot-password").addEventListener("click", () => {
   if (confirm("Clear this device? Your saved token is deleted and you set a new password. Nothing on GitHub changes.")) { vault.resetDevice(); showLock(); }
 });
 document.getElementById("lock-now").addEventListener("click", () => vault.lock("manual"));
-vault.onLock(() => { state.token = null; stopClock(); for (const v of Object.values(views)) v.onLock?.(); showLock(); });
+vault.onLock((reason) => { state.token = null; stopClock(); for (const v of Object.values(views)) v.onLock?.(reason); showLock(); });
 ["click", "keydown", "touchstart"].forEach((ev) => document.addEventListener(ev, () => vault.noteActivity(), { passive: true }));
 document.getElementById("modal-close").addEventListener("click", closeModal);
 document.getElementById("modal").addEventListener("click", (e) => { if (e.target.id === "modal") closeModal(); });

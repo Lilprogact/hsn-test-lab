@@ -13,7 +13,7 @@ import { h, card, badge } from "./ui.js";
 import { FIELDS, SECRET_NAMES, CHECK_WORKFLOW, ENGINE_REPO, FEED_REPO, hint, review, sendSecrets, DropError, ownerFromHost, resultLine } from "./drop.js";
 
 const FLAG = "hsn.setup.v1";               // on this device: names with Saved / Failed, and the time. Never a value.
-const IDLE_MS = 30 * 60 * 1000;            // boxes left untouched this long are emptied (the site's own idle lock is 30 minutes too)
+const IDLE_MS = 60 * 60 * 1000;            // boxes left untouched this long are emptied; after 30 idle minutes the site's own lock already hides them
 const POLL_MS = 15000;
 const KEY_LINK = "https://github.com/settings/personal-access-tokens/new?name=Test+Lab+one-time+key&description=Used+once+by+the+Test+Lab+setup+page%2C+then+destroyed&expires_in=1&secrets=write";
 const FEED_LINK = "https://github.com/settings/personal-access-tokens/new?name=Test+Lab+feed+read-only&description=Lets+the+Test+Lab+engine+read+the+weekly+feed.+Read-only.&expires_in=90&contents=read";
@@ -62,7 +62,15 @@ export class SetupView {
 
   // ── life cycle ────────────────────────────────────────────────────────────
   onUnlock() {}
-  onLock() { this.wipe(); this.stopPolling(); if (this.replace) { this.replace = false; this.mode = "locked"; } }
+  /** The site locked. Tapping Lock empties the boxes. When the site locks by itself after 30 idle minutes (he is in
+   *  another tab fetching a value), the boxes are kept, out of sight and out of reach behind the password, until
+   *  they have gone 60 minutes without typing. */
+  onLock(reason) {
+    this.stopPolling();
+    if (reason === "idle") return;
+    this.wipe();
+    if (this.replace) { this.replace = false; this.mode = "locked"; }
+  }
   hide() { this.stopPolling(); }
 
   async show() {
@@ -124,7 +132,7 @@ export class SetupView {
     if (this.busy || !this.hasText() || Date.now() - this.lastTouched < IDLE_MS) return;
     this.wipe();
     if (this.replace) { this.replace = false; this.mode = "locked"; this.render(); return; }
-    this.say("warn", "The boxes were emptied after 30 minutes without typing. Nothing was sent.");
+    this.say("warn", "The boxes were emptied after 60 minutes without typing. Nothing was sent.");
   }
 
   // ── drawing ───────────────────────────────────────────────────────────────
@@ -189,7 +197,7 @@ export class SetupView {
           h("details", {}, h("summary", {}, "How it stays private"), h("ul", {},
             h("li", {}, "The sealing is done here, by code that is part of this site. No outside script is loaded."),
             h("li", {}, "The sealed values go to api.github.com and nowhere else. This site can talk to no other address."),
-            h("li", {}, "Nothing you type is saved on this device or shown again. The boxes are emptied as soon as the first value has gone through."),
+            h("li", {}, "Nothing you type is saved on this device or shown again. The boxes are emptied as soon as the first value has gone through, when you tap Lock, when the page is reloaded, and after 60 minutes without typing."),
             h("li", {}, "The boxes stay hidden, with the browser's autofill and suggestions switched off. If Safari offers to save a password, tap Not Now."),
             h("li", {}, "Send also wipes your clipboard where the browser allows it, so the last thing you copied is not left lying there."))));
 
