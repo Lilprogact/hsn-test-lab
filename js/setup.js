@@ -287,7 +287,7 @@ export class SetupView {
       this.progressEl.replaceChildren();
       if (error instanceof DropError) { this.say("bad", error.message); return; }   // nothing was saved; the boxes are kept
       this.wipe();
-      this.say("bad", "Something unexpected went wrong inside the page, so it stopped and emptied the boxes. Check the result below after reloading, or send again with a new one-time key.");
+      this.say("bad", "Something unexpected went wrong inside the page, so it stopped and emptied the boxes. Some values may already have been saved: Settings → Start-up checklist → Re-check now shows which names GitHub holds. To send again you need a new one-time key; delete the old one on GitHub if it is still listed.");
       return;
     }
     this.wipe();
