@@ -22,7 +22,7 @@ export const FIELDS = [
   { name: "FOREXCOM_MT5_SERVER", label: "FOREX.com MT5 server", what: "The server name, exactly as MetaTrader or FOREX.com's email shows it.", tidy: "ends" },
   { name: "FOREXCOM_MT5_PASSWORD", label: "FOREX.com MT5 investor password", what: "The investor (read-only) password. Never the trading password.", tidy: "ends" },
   { name: "ANTHROPIC_API_KEY", label: "Anthropic API key", what: "From the Claude Console, API keys. It starts with sk-ant-.", tidy: "nospace" },
-  { name: "VPS_FEED_READ_TOKEN", label: "VPS feed read-only token", what: "A GitHub token that can only read hsn-vps-feed (Contents: Read-only).", tidy: "nospace" },
+  { name: "VPS_FEED_READ_TOKEN", label: "VPS feed read-only token", what: "Optional. A GitHub token that can only read hsn-vps-feed (Contents: Read-only). Leave empty until that repository exists.", tidy: "nospace" },
 ];
 export const SECRET_NAMES = FIELDS.map((f) => f.name);
 

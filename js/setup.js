@@ -230,7 +230,9 @@ export class SetupView {
       h("li", {}, "Choose a workspace for it (Default is fine). A key made without a workspace does not work here."),
       h("li", {}, "Expiration: choose Never, or the company stops on the day the key runs out."),
       h("li", {}, "Copy the key (it is shown once) and paste it here. The account also needs credit under Billing.")));
-    if (name === "VPS_FEED_READ_TOKEN") return d("Don't have it yet?", h("ol", {},
+    if (name === "VPS_FEED_READ_TOKEN") return d("Don't have it yet?",
+      h("p", {}, "This one is optional. It only works once the feed repository, ", h("strong", {}, FEED_REPO), ", exists on your GitHub and the VPS has published to it. If GitHub does not list that repository when you make the token, it has not been created yet: leave this box empty and add the token later with Replace a value."),
+      h("ol", {},
       h("li", {}, link(FEED_LINK, "Open GitHub's new-token page"), " (name, 90 days and Contents: Read-only are already filled in)."),
       h("li", {}, "Under Repository access tick Only select repositories and choose ", h("strong", {}, FEED_REPO), " (only that one)."),
       h("li", {}, "Under Permissions it should show Contents set to Read-only, and nothing else. (If Contents is not listed: Add permissions → Contents, access Read-only.)"),
