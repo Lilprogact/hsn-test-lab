@@ -209,8 +209,8 @@ export class SetupView {
       h("details", { open: !this.replace || null }, h("summary", {}, "How to make it (about a minute)"), h("ol", {},
         h("li", {}, link(KEY_LINK, "Open GitHub's new-token page"), ". The name, a 1-day expiry and the one permission are already filled in. GitHub may ask for your password first."),
         h("li", {}, "Under Repository access tick ", h("strong", {}, "Only select repositories"), " and choose ", h("strong", {}, ENGINE_REPO), " (only that one)."),
-        h("li", {}, "Under Permissions check it shows ", h("strong", {}, "Secrets: Read and write"), " and nothing else you added. (Metadata: Read-only appears by itself.)"),
-        h("li", {}, "Tap ", h("strong", {}, "Generate token"), ", copy it, come back to this tab and paste it in the box above."))));
+        h("li", {}, "Under Permissions check it shows ", h("strong", {}, "Secrets"), " set to ", h("strong", {}, "Read and write"), ", and nothing else. (Metadata: Read-only appears by itself. If Secrets is not listed: Add permissions → Secrets, then set its access to Read and write.)"),
+        h("li", {}, "Tap ", h("strong", {}, "Generate token"), " (and again if GitHub asks you to confirm), copy the token, come back to this tab and paste it in the box above."))));
 
     this.root.replaceChildren(h("div", { class: "drop" }, intro,
       card(this.replace ? "The values to replace" : "The five logins", ...rows),
@@ -233,6 +233,7 @@ export class SetupView {
     if (name === "VPS_FEED_READ_TOKEN") return d("Don't have it yet?", h("ol", {},
       h("li", {}, link(FEED_LINK, "Open GitHub's new-token page"), " (name, 90 days and Contents: Read-only are already filled in)."),
       h("li", {}, "Under Repository access tick Only select repositories and choose ", h("strong", {}, FEED_REPO), " (only that one)."),
+      h("li", {}, "Under Permissions it should show Contents set to Read-only, and nothing else. (If Contents is not listed: Add permissions → Contents, access Read-only.)"),
       h("li", {}, "Generate token, copy it, paste it here. This is a different token from the one-time key below.")));
     return null;
   }
