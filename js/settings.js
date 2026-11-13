@@ -2,7 +2,7 @@
 // budgets, Actions minutes and AI costs, data coverage and the match check, the animations switch.
 import * as vault from "./vault.js";
 import * as gh from "./github.js";
-import { state, startSettingsWorkflow, loadShared } from "./app.js";
+import { state, startSettingsWorkflow, loadShared, switchView } from "./app.js";
 import { ukDateTime } from "./clock.js";
 import { h, card, stat, table, badge, field, select, input, num, pct, money } from "./ui.js";
 
@@ -93,21 +93,22 @@ export class SettingsView {
     const mt5Card = card("FOREX.com history from MT5 in the cloud (no VPS needed)", this.mt5El,
       h("div", { class: "row" },
         h("button", { class: "primary", onclick: async () => {
-          if (!confirm("Start the cloud export now? A Windows runner installs MetaTrader 5, logs in with the FOREX.com secrets you saved in the engine repo, exports the 1-minute history and contract specs, and runs the Data check. It takes 10–25 minutes and uses about 20–50 Actions minutes (Windows counts double).")) return;
+          if (!confirm("Start the cloud export now? A Windows runner installs MetaTrader 5, logs in read-only with the FOREX.com secrets saved from the One-time setup page, exports the 1-minute history and contract specs, and runs the Data check. It takes 10–25 minutes and uses about 20–50 Actions minutes (Windows counts double).")) return;
           try { await gh.dispatch(state.token, state.owner, gh.MT5_WORKFLOW, {}); alert("Export requested. Watch it under Runs or in the Actions tab; this card updates when it finishes."); } catch (e) { alert(e.message); }
         } }, "Export FOREX.com history now")),
       h("details", {}, h("summary", {}, "How to set it up (once)"), h("ol", {},
-        h("li", {}, "Open a FOREX.com MT5 account for data only: a free MT5 demo (forex.com → Demo account → MetaTrader 5; it expires after 30 days) or use your live account with its READ-ONLY investor password. FOREX.com emails the login, the password and the server name."),
-        h("li", {}, "GitHub → hsn-test-lab-engine → Settings → Secrets and variables → Actions → New repository secret, three times: FOREXCOM_MT5_LOGIN, FOREXCOM_MT5_PASSWORD, FOREXCOM_MT5_SERVER (the server name exactly as in the email)."),
-        h("li", {}, "Press Export FOREX.com history now. The first run asks the server for up to 10 years of 1-minute bars (it gives what it has, usually one to a few years for gold) and runs the Data check. After that it runs every Monday at 01:17 UTC and only adds new bars."),
+        h("li", {}, "Use a FOREX.com MT5 account with its READ-ONLY investor password. The engine checks the login and refuses one that could place a trade. FOREX.com emails the account number and the server name; the investor password is set in MetaTrader 5."),
+        h("li", {}, "Put the three values in on the One-time setup page (FOREXCOM_MT5_LOGIN, FOREXCOM_MT5_SERVER, FOREXCOM_MT5_PASSWORD). They are sealed in this browser and saved straight into GitHub's secrets; the engine then checks the login and starts the first export by itself."),
+        h("li", {}, "The first run asks the server for up to 10 years of 1-minute bars (it gives what it has, usually one to a few years for gold) and runs the Data check. After that it runs every Monday at 01:17 UTC and only adds new bars. Export FOREX.com history now starts one by hand."),
         h("li", {}, "If a symbol is not found, the report lists the names on that server that look like it (NAS100 is often named differently); re-run the workflow from the Actions tab with the right names in the symbols input."))));
     this.feedEl = h("div", {}, h("p", { class: "muted" }, "Loading…"));
     const feedCard = card("VPS feed (read-only, weekly release)", this.feedEl,
       h("p", { class: "help" }, "The VPS publishes one GitHub Release a week on Lilprogact/hsn-vps-feed (prices, indicator lines, signals, results + a manifest with checksums). The Data check reads the latest release with a read-only token (VPS_FEED_READ_TOKEN in the engine's secrets), verifies every checksum, imports the alerts and the research, and only catalogues the Vantage prices — never a results source. Nothing can write back."));
     this.setupEl = h("div", {}, h("p", { class: "muted" }, "Loading…"));
     const setupCard = card("Start-up checklist", this.setupEl,
-      h("div", { class: "row" }, h("button", { class: "secondary small", onclick: async () => { try { await gh.dispatch(state.token, state.owner, gh.SETUP_WORKFLOW, {}); alert("Checking… reload this page in about a minute."); } catch (e) { alert(e.message); } } }, "Re-check now")),
-      h("p", { class: "help" }, "Only yes / no per secret is ever recorded, never a value."));
+      h("div", { class: "row" }, h("button", { class: "secondary small", onclick: async () => { try { await gh.dispatch(state.token, state.owner, gh.SETUP_WORKFLOW, {}); alert("Checking… reload this page in about a minute."); } catch (e) { alert(e.message); } } }, "Re-check now"),
+        h("button", { class: "secondary small", onclick: () => switchView("setup") }, "Put the logins in: One-time setup")),
+      h("p", { class: "help" }, "Only yes / no per secret is ever recorded, never a value. The logins themselves go in on the One-time setup page: sealed in this browser and sent straight to GitHub's secrets."));
     this.root.replaceChildren(setupCard, tokenCard, pwCard, limitsCard, usageCard, dataCard, mt5Card, feedCard, misc);
     this.loadUsage();
     this.loadMt5();
@@ -125,13 +126,13 @@ export class SettingsView {
       const gold = d.XAUUSD || {};
       const rows = [
         ["Site token saved on this device", ok(vault.hasToken()), "Settings → GitHub token"],
-        ["FOREX.com MT5 login secrets (3)", ok(sec.forexcom_mt5_login), "engine → Settings → Secrets: FOREXCOM_MT5_LOGIN / _PASSWORD (investor) / _SERVER"],
+        ["FOREX.com MT5 login secrets (3)", ok(sec.forexcom_mt5_login), "One-time setup: FOREXCOM_MT5_LOGIN / _SERVER / _PASSWORD (investor, read-only)"],
         ["Gold 1-minute history in the engine", gold.bars ? badge(`${num(gold.bars, 0)} bars · ${(gold.first_bar || "").slice(0, 10)} → ${(gold.last_bar || "").slice(0, 10)}${gold.kind === "tv" ? " · TRIAL (exports)" : ""}`, "good") : badge("none", "bad"), "Settings → Export FOREX.com history now"],
         ["NAS100 history", (d.NAS100 || {}).bars ? badge(`${num(d.NAS100.bars, 0)} bars`, "good") : badge("none", "warn"), "needs the right FOREX.com symbol name"],
         ["GBP/USD history (for the £ maths)", (d.GBPUSD || {}).bars ? badge(`${num(d.GBPUSD.bars, 0)} bars`, "good") : badge("none — fixed rate used if set", "warn"), ""],
         ["TradingView exports + match check", s.tv_exports ? badge(`${s.tv_exports} files · match ${s.match_check?.passes ? "passes" : "not yet"}`, s.match_check?.passes ? "good" : "warn") : badge("no exports", "warn"), "proves the port = your indicator"],
-        ["Anthropic API key (agents think)", ok(sec.anthropic_api_key || sec.claude_oauth_token), "engine → Settings → Secrets: ANTHROPIC_API_KEY"],
-        ["VPS feed read-only token", ok(sec.vps_feed_read_token), "optional: VPS_FEED_READ_TOKEN (alerts, research)"],
+        ["Anthropic API key (agents think)", ok(sec.anthropic_api_key || sec.claude_oauth_token), "One-time setup: ANTHROPIC_API_KEY"],
+        ["VPS feed read-only token", ok(sec.vps_feed_read_token), "One-time setup: VPS_FEED_READ_TOKEN (alerts, research)"],
         ["HSN Capital", f.exists ? badge(`${f.agents} agents · cycle ${f.cycle} · ${f.paused ? "PAUSED" : "running"}`, f.paused ? "warn" : "good") : badge("not opened", "warn"), "CEO's office → Resume the firm"],
         ["Runs finished", badge(`${s.runs?.done ?? 0} (Waves: ${s.runs?.waves_done ?? 0})`, ""), "run one Backtest → Waves rules for the agents' benchmark"],
       ];
@@ -144,7 +145,7 @@ export class SettingsView {
     if (!state.token) return;
     try {
       const f = await gh.getJson(state.token, state.owner, "status/vps_feed.json");
-      if (!f) { this.feedEl.replaceChildren(h("p", { class: "muted" }, "Not read yet: add VPS_FEED_READ_TOKEN (Contents read-only on hsn-vps-feed) to the engine's secrets; the next Data check reads the latest release.")); return; }
+      if (!f) { this.feedEl.replaceChildren(h("p", { class: "muted" }, "Not read yet: put VPS_FEED_READ_TOKEN (Contents read-only on hsn-vps-feed) in on the One-time setup page; the engine then reads the latest release.")); return; }
       if (f.error) { this.feedEl.replaceChildren(h("p", { class: "warnc" }, `${f.error} (checked ${ukDateTime(f.imported_at)})`)); return; }
       const rel = f.release || {};
       const rows = (f.assets || []).map((a) => ({ File: a.name, Kind: a.kind, Size: `${num((a.bytes || 0) / 1048576, 1)} MB`, Checksum: a.checksum || "—", "Date range": a.date_from ? `${a.date_from} → ${a.date_to || "?"}` : "—", Extracted: a.extracted ? `${num(a.extracted.files, 0)} files` : "—" }));
@@ -162,13 +163,13 @@ export class SettingsView {
     if (!state.token) return;
     try {
       const m = await gh.getJson(state.token, state.owner, "status/mt5_cloud.json");
-      if (!m) { this.mt5El.replaceChildren(h("p", { class: "muted" }, "Never run. Set the three secrets (below) and press the button.")); return; }
+      if (!m) { this.mt5El.replaceChildren(h("p", { class: "muted" }, "Never run. Put the three FOREX.com values in on the One-time setup page; the first export then starts by itself.")); return; }
       if (m.status) { this.mt5El.replaceChildren(h("p", { class: "warnc" }, `${m.status} — ${m.note || ""}`), h("p", { class: "muted" }, `checked ${ukDateTime(m.at)}`)); return; }
       if (m.probe) { this.mt5El.replaceChildren(h("p", {}, badge(m.terminal_started ? "MetaTrader 5 installs and starts on the cloud runner" : "MetaTrader 5 did not start on the cloud runner", m.terminal_started ? "good" : "bad"), " ", badge(m.api_attached ? "Python API attached" : "Python API not attached (no login yet)", m.api_attached ? "good" : "warn")), h("p", { class: "help" }, m.note || "")); return; }
       const rows = (m.symbols || []).map((x) => ({ Symbol: x.symbol, "Bars added": x.error ? "—" : num(x.bars_added, 0), "Earliest bar this run": x.error ? "" : (x.earliest_bar_this_run || "").slice(0, 16), "Months touched": x.error ? "" : (x.months_touched || []).join(" "), Problem: x.error ? `${x.error}${x.candidates?.length ? ` · names on this server: ${x.candidates.join(", ")}` : ""}` : "" }));
       this.mt5El.replaceChildren(
         h("p", {}, badge(`last export ${ukDateTime(m.at)}`, "good"), " ", badge(`${m.terminal?.company || "?"} · build ${m.terminal?.build || "?"}`), " ",
-          m.account ? badge(m.account.read_only_login ? "read-only login (investor password)" : "login could trade (demo master password) — the job never does", m.account.read_only_login ? "good" : "warn") : null, " ",
+          m.account ? badge(m.account.read_only_login ? "read-only login (investor password)" : "login could trade: refused", m.account.read_only_login ? "good" : "bad") : null, " ",
           badge(`server clock offset ${num((m.server_utc_offset_seconds || 0) / 3600, 1)} h (${m.offset_measured_from || "?"})`)),
         table(["Symbol", "Bars added", "Earliest bar this run", "Months touched", "Problem"], rows, { numeric: ["Bars added"] }));
     } catch (e) { this.mt5El.replaceChildren(h("p", { class: "error" }, e.message)); }

@@ -9,6 +9,14 @@ import { PaperView } from "./paper.js";
 import { FirmView } from "./firm.js";
 import { RunsView } from "./runs.js";
 import { SettingsView } from "./settings.js";
+import { SetupView } from "./setup.js";
+
+// GitHub Pages cannot send the header that forbids framing, so the site refuses to run inside another page itself:
+// nothing typed here (the password, the token, the One-time setup boxes) can then sit under someone else's overlay.
+if (window.top !== window.self) {
+  document.documentElement.replaceChildren();
+  throw new Error("HSN Test Lab does not run inside another page.");
+}
 
 export const state = {
   token: null,
@@ -49,7 +57,7 @@ async function unlocked() {
   for (const v of Object.values(views)) v.onUnlock?.();
   if (!state.token) {
     notice("Paste your GitHub token in Settings to connect to hsn-test-lab-engine. Nothing loads without it.", "warn");
-    switchView("settings");
+    switchView(current === "setup" ? "setup" : "settings");      // the One-time setup page works before the token exists
   } else {
     notice("");
     await loadShared();
@@ -75,7 +83,7 @@ document.getElementById("forgot-password").addEventListener("click", () => {
   if (confirm("Clear this device? Your saved token is deleted and you set a new password. Nothing on GitHub changes.")) { vault.resetDevice(); showLock(); }
 });
 document.getElementById("lock-now").addEventListener("click", () => vault.lock("manual"));
-vault.onLock(() => { state.token = null; stopClock(); showLock(); });
+vault.onLock(() => { state.token = null; stopClock(); for (const v of Object.values(views)) v.onLock?.(); showLock(); });
 ["click", "keydown", "touchstart"].forEach((ev) => document.addEventListener(ev, () => vault.noteActivity(), { passive: true }));
 document.getElementById("modal-close").addEventListener("click", closeModal);
 document.getElementById("modal").addEventListener("click", (e) => { if (e.target.id === "modal") closeModal(); });
@@ -83,7 +91,9 @@ document.getElementById("modal").addEventListener("click", (e) => { if (e.target
 // ── navigation ─────────────────────────────────────────────────────────────
 document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => switchView(b.dataset.view)));
 export function switchView(name) {
+  if (name !== current) views[current]?.hide?.();
   current = name;
+  try { history.replaceState(null, "", `#${name}`); } catch { /* a reload then opens the first page instead */ }
   document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("is-active", b.dataset.view === name));
   document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id !== `view-${name}`));
   views[name]?.show?.();
@@ -125,7 +135,7 @@ function renderTrialNotice() {
   const t = trialMode();
   const cov = state.coverage?.symbols?.XAUUSD;
   if (!cov || !cov.months) {
-    el.textContent = "No price data in the engine yet. Add the FOREX.com MT5 read-only (investor) login as three secrets in hsn-test-lab-engine, then Settings → Export FOREX.com history now. TradingView exports in data/exports/ are for the match check. Nothing can run until then.";
+    el.textContent = "No price data in the engine yet. Put the FOREX.com MT5 read-only (investor) login in on the One-time setup page; the price history then downloads by itself. TradingView exports in data/exports/ are for the match check. Nothing can run until then.";
     el.hidden = false; return;
   }
   if (t.trial) { el.textContent = `TRIAL MODE — results are provisional: ${t.reason}`; el.hidden = false; }
@@ -207,6 +217,11 @@ views.paper = new PaperView(document.getElementById("view-paper"));
 views.firm = new FirmView(document.getElementById("view-firm"));
 views.runs = new RunsView(document.getElementById("view-runs"), (rid, mode) => { switchView(mode === "million" ? "million" : "backtest"); views[mode === "million" ? "million" : "backtest"].openResult?.(rid); });
 views.settings = new SettingsView(document.getElementById("view-settings"), { onTokenSaved: async () => { state.token = await vault.getToken(); state.owner = vault.tokenMeta().owner; notice(""); await loadShared(); } });
+
+views.setup = new SetupView(document.getElementById("view-setup"));
+
+// a link straight to a page: .../hsn-test-lab/#setup opens One-time setup after the password
+if (views[location.hash.slice(1)]) current = location.hash.slice(1);
 
 (async () => {
   if (await vault.resumeSession()) await unlocked(); else showLock();

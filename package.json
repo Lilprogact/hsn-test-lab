@@ -3,5 +3,5 @@
   "private": true,
   "type": "module",
   "description": "HSN Test Lab website (static, GitHub Pages). No build step.",
-  "scripts": { "check": "for f in js/*.js; do node --check $f || exit 1; done && echo syntax ok", "test": "node --test tests/*.test.js" }
+  "scripts": { "check": "for f in js/*.js js/vendor/*.js; do node --check $f || exit 1; done && echo syntax ok", "test": "node --test tests/*.test.js" }
 }

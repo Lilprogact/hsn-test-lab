@@ -130,6 +130,19 @@ export async function unlock(password) {
   return true;
 }
 
+/** True when `password` is this device's site password. Changes nothing: no unlock, no session, no idle timer.
+ *  Used by the One-time setup page, which opens again only with the password even while the site is unlocked. */
+export async function checkPassword(password) {
+  const vault = readVault();
+  if (!vault || !password) return false;
+  try {
+    const key = await deriveKey(String(password), unb64(vault.salt), vault.iterations || ITERATIONS);
+    return (await decrypt(key, vault.verifier)) === VERIFIER;
+  } catch {
+    return false;
+  }
+}
+
 export async function resumeSession() {
   if (cryptoKey) return true;
   const vault = readVault();

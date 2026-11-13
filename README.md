@@ -39,18 +39,64 @@ could only start workflows and read results, never change code. The site tells y
 * **Settings** — token, password, budgets and limits, HSN Capital's size and budgets, Actions minutes and AI
   costs this month, data coverage, the TradingView match check, animations on/off.
 
+* **Setup** (One-time setup) — put the engine's five logins into GitHub Actions secrets from the browser, in one
+  go, instead of typing them into GitHub's secrets page. See the next section.
+
 The header always shows the market clock: gold and NAS100 open or closed with the time to the next change in UK
 time (including the weeks when UK and US clocks differ), the Sydney, Tokyo, London and New York sessions, and a
 note when forex is open but gold is frozen.
+
+## One-time setup: the secret drop
+
+Open `…/hsn-test-lab/#setup` (or the **Setup** tab). The page has one hidden box each for `FOREXCOM_MT5_LOGIN`,
+`FOREXCOM_MT5_SERVER`, `FOREXCOM_MT5_PASSWORD` (the investor, read-only password), `ANTHROPIC_API_KEY` and
+`VPS_FEED_READ_TOKEN`, and a last box for a **one-time key**.
+
+What happens on **Send** (`js/drop.js`, `js/sealedbox.js`):
+
+1. The page asks GitHub whether it accepts the one-time key, and reads `hsn-test-lab-engine`'s Actions public key.
+   If GitHub does not accept the key, nothing is sent and the boxes are kept.
+2. The browser reproduces a known sealed box byte for byte (a self-test); if it cannot, nothing is sent.
+3. Each filled box is sealed in the browser for that public key (a libsodium sealed box, the format GitHub's API
+   requires) and saved straight into the repository's Actions secrets. An empty box leaves its secret untouched.
+4. The boxes are emptied as soon as the first value has gone through. The page asks GitHub which names it now
+   holds, shows each name with **Saved** or **Failed**, and locks.
+5. The one-time key is destroyed through GitHub's own revocation address (called without a login). GitHub emails
+   the owner that a token was revoked; that is this step.
+6. With the site token, the page starts the engine's `Secrets check` workflow and shows its one-line answer:
+   FOREX.com read-only login / Anthropic key / feed access.
+
+The locked page opens again only with the site password, and only to replace a value (with a new one-time key).
+
+Where a value can be: in a hidden box in the page's memory, and sealed on its way to `api.github.com`. Where it
+never is: this repo or its history, any file, a log or the console, a URL, `localStorage` / `sessionStorage` /
+cookies / IndexedDB, any address other than `api.github.com`, any outside script (the two encryption libraries are
+bundled in `js/vendor/` and pinned to their upstream files byte for byte; see `js/vendor/README.md`). The boxes are
+`type="password"` (secure text entry: no keyboard learning, no suggestions) with autofill, autocorrect,
+autocapitalise and spellcheck off, and they are not inside a form. Boxes left untouched for 30 minutes are emptied,
+and so are they when the site locks. The only thing kept on the device is the list of names
+with Saved / Failed and the time.
+
+**Why a one-time key and not the site token.** The site token stays on the device for 90 days. If it could also
+write secrets, a stolen copy could overwrite one (for example, point the FOREX.com server name at a machine that
+records the login). The one-time key is a fine-grained token for `hsn-test-lab-engine` only, with *Secrets: Read and
+write* and nothing else, made a minute before the Send (the page links to GitHub's form with the name, a 1-day
+expiry and the permission filled in), used once, never stored, and destroyed by the page. Neither key can ever read
+a secret back: GitHub's API does not return secret values to anyone.
+
+The tests (`npm test`) run all of this against a stand-in GitHub that holds a test private key: every saved value
+opens to exactly what was typed; no value appears in any request other than sealed; the key is destroyed without a
+login header; and with a rejected, read-only or wrong-account key nothing is saved.
 
 ## Security
 
 Strict Content Security Policy: only this site's own scripts and styles, connections only to `api.github.com`,
 no third-party scripts, no fonts from elsewhere. Alert text and anything else from outside is shown as plain text.
+GitHub Pages cannot send the header that forbids framing, so the site refuses to run inside another page itself.
 
 ## Local check
 
 ```
 npm run check   # syntax of every module
-npm test        # market-clock tests (DST weeks, Friday close, sessions)
+npm test        # market clock, the building, the sealed box against libsodium's own output, the bundled libraries, the secret drop
 ```

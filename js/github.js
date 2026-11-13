@@ -10,6 +10,7 @@ export const SETTINGS_WORKFLOW = "save-settings.yml";
 export const DATA_WORKFLOW = "data-check.yml";
 export const MT5_WORKFLOW = "data-mt5.yml";
 export const SETUP_WORKFLOW = "setup-check.yml";
+export const SECRETS_WORKFLOW = "secrets-check.yml";
 
 export class GitHubError extends Error {
   constructor(message, status, kind) {

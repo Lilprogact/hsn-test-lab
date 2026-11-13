@@ -181,6 +181,34 @@ select.small, input.small { width: auto; min-height: 36px; padding: 6px 8px; fon
 .modal { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
 .modal-card { width: min(1000px, 100%); }
 .modal-close { position: sticky; top: 0; float: right; width: 44px; height: 44px; margin: -8px -8px 0 8px; background: var(--card2); border: 1px solid var(--line2); border-radius: 50%; z-index: 3; line-height: 1; }
+/* One-time setup: hidden boxes, big touch targets, and 16px text in the boxes so iPad Safari does not zoom in on focus */
+.drop { max-width: 780px; margin: 0 auto; display: grid; gap: 12px; }
+.drop-row { display: grid; gap: 5px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.drop-row:last-of-type { border-bottom: 0; }
+.drop-row label { display: flex; flex-direction: column; gap: 2px; }
+.drop-name { font-weight: 650; color: var(--text); font-size: .92rem; overflow-wrap: anywhere; }
+.drop-what { color: var(--muted); font-size: .86rem; }
+input.drop-input { font-size: 16px; min-height: 46px; letter-spacing: .06em; }
+input.drop-input:focus { outline: 2px solid var(--green2); outline-offset: 1px; }
+.drop-hint { font-size: .8rem; min-height: 1.25em; color: var(--muted); overflow-wrap: anywhere; }
+.drop-hint.ok { color: var(--green); } .drop-hint.warn { color: var(--amber); } .drop-hint.bad { color: var(--red); }
+.drop details { font-size: .9rem; }
+.drop details ol, .drop details ul { margin: 8px 0 2px; padding-left: 22px; }
+.drop details li { margin: 6px 0; }
+.drop details p { margin: 8px 0 2px; }
+.drop-where { background: transparent; border-style: dashed; }
+.drop-msg { margin: 0 0 10px; }
+.drop-msg ul { margin: 6px 0 0; padding-left: 20px; }
+.drop-msg li { margin: 4px 0; overflow-wrap: anywhere; }
+.drop-send { min-width: 230px; min-height: 48px; }
+.drop-actions { margin-bottom: 8px; }
+.drop-progress p { margin: 3px 0; }
+.drop-line { font-size: 1.02rem; font-weight: 600; overflow-wrap: anywhere; }
+.drop-table td, .drop-table th { white-space: normal; vertical-align: top; }
+.drop-table td.mono { overflow-wrap: anywhere; }
+.drop-pass { min-width: 220px; flex: 1; }
+.drop a { color: var(--blue); text-underline-offset: 2px; }
+
 @media (pointer: coarse) {
   button.small, select.small, input.small { min-height: 40px; }
   .chip { min-height: 40px; } .item { min-height: 44px; }
