@@ -274,8 +274,16 @@ const trimDot = (s) => String(s || "").replace(/\.\s*$/, "");
 export function forexcomPart(doc, login) {
   const rid = doc?.request_id || "";
   const fresh = !!login?.checked_at && ((rid && login.request_id === rid) || String(login.checked_at) >= String(doc?.updated_at || "9"));
-  if (fresh) return { state: login.state === "ok" ? "ok" : "failed", reason: login.reason, detail: login.detail, checked_at: login.checked_at };
+  if (fresh) return { state: loginState(login), reason: login.reason, detail: login.detail, checked_at: login.checked_at };
   return doc?.forexcom || {};
+}
+
+const MACHINE_REASONS = ["machine_failed", "terminal_not_ready", "check_crashed", "could_not_connect"];
+
+/** ok / failed / unknown. A machine that could not start MetaTrader says nothing about the login itself. */
+export function loginState(login) {
+  if (login?.state === "ok") return "ok";
+  return MACHINE_REASONS.includes(login?.reason) ? "unknown" : "failed";
 }
 
 /**
@@ -298,7 +306,7 @@ export function resultLine(doc, login, { requestId = null, startedAt = null, now
     const state = p.state || "not_checked";
     let text = `${label}: ${WORDS[state] || state}`;
     if (state === "checking") text += " (about 8 minutes)";
-    else if (state !== "ok" && p.detail) text += ` (${trimDot(p.detail)})`;
+    else if (state !== "ok" && p.detail && p.reason !== "missing") text += ` (${trimDot(p.detail)})`;
     else if (state === "ok" && p.warning) text += ` (but ${trimDot(p.warning)})`;
     return text;
   });

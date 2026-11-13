@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import nacl from "../js/vendor/tweetnacl.js";
 import { blake2b } from "../js/vendor/blake2b.js";
 import { base64ToBytes, bytesToBase64 } from "../js/sealedbox.js";
-import { FIELDS, SECRET_NAMES, tidy, hint, review, sendSecrets, DropError, ownerFromHost, resultLine, forexcomPart } from "../js/drop.js";
+import { FIELDS, SECRET_NAMES, tidy, hint, review, sendSecrets, DropError, ownerFromHost, resultLine, forexcomPart, loginState } from "../js/drop.js";
 
 const fx = JSON.parse(readFileSync(new URL("./fixtures/sealedbox.json", import.meta.url), "utf8"));
 const hex = (s) => Uint8Array.from(s.match(/../g) || [], (b) => parseInt(b, 16));
@@ -350,12 +350,18 @@ test("the one-line result, as the engine's files fill in", () => {
   r = resultLine(doc, { checked_at: "2026-11-13T15:38:00Z", request_id: "r1", state: "failed", reason: "not_read_only", detail: "The login works, but it could place trades." }, { requestId: "r1", startedAt: started, now: at(9) });
   assert.ok(r.line.startsWith("FOREX.com read-only login: does NOT work (The login works, but it could place trades) ·"));
 
+  r = resultLine(doc, { checked_at: "2026-11-13T15:38:00Z", request_id: "r1", state: "failed", reason: "machine_failed", detail: "GitHub's Windows machine could not start MetaTrader 5." }, { requestId: "r1", startedAt: started, now: at(9) });
+  assert.ok(r.line.startsWith("FOREX.com read-only login: could not be checked (GitHub's Windows machine could not start MetaTrader 5) ·"), "a machine problem is not called a wrong login");
+  assert.deepEqual(["terminal_not_ready", "check_crashed", "could_not_connect", "login_refused", "not_read_only", "not_forexcom", "no_connection"].map((reason) => loginState({ state: "failed", reason })),
+    ["unknown", "unknown", "unknown", "failed", "failed", "failed", "failed"]);
+
   r = resultLine(doc, null, { requestId: "r1", startedAt: started, now: at(31) });
   assert.match(r.line, /could not be checked \(the Windows machine has not answered after 30 minutes/);
   assert.equal(r.done, true);
 
-  const none = { request_id: "", updated_at: "2026-11-13T12:00:00Z", anthropic: { state: "missing", detail: "ANTHROPIC_API_KEY is not saved yet." }, feed: { state: "failed", detail: "GitHub did not accept the token." }, forexcom: { state: "missing", detail: "The three FOREX.com values are not saved yet." } };
-  assert.equal(resultLine(none, null).line, "FOREX.com read-only login: not saved yet (The three FOREX.com values are not saved yet) · Anthropic key: not saved yet (ANTHROPIC_API_KEY is not saved yet) · Feed access: does NOT work (GitHub did not accept the token)");
+  const none = { request_id: "", updated_at: "2026-11-13T12:00:00Z", anthropic: { state: "missing", reason: "missing", detail: "ANTHROPIC_API_KEY is not saved yet." }, feed: { state: "failed", reason: "token_rejected", detail: "GitHub did not accept the token." },
+    forexcom: { state: "missing", reason: "incomplete", detail: "Not all three FOREX.com values are saved yet: missing FOREXCOM_MT5_PASSWORD." } };
+  assert.equal(resultLine(none, null).line, "FOREX.com read-only login: not saved yet (Not all three FOREX.com values are saved yet: missing FOREXCOM_MT5_PASSWORD) · Anthropic key: not saved yet · Feed access: does NOT work (GitHub did not accept the token)");
   assert.equal(forexcomPart(doc, { checked_at: "2026-11-16T01:20:00Z", request_id: "", state: "ok" }).state, "ok", "a later weekly check replaces the answer");
 });
 
