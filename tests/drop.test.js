@@ -74,7 +74,8 @@ class FakeGitHub {
       const name = u.pathname.slice(base.length + 1);
       this.puts = (this.puts || 0) + 1;
       if (o.readOnly) return json(403, { message: "Resource not accessible by personal access token" });
-      if (o.failName === name) return json(500, { message: "server error" });
+      if (o.failName === name || o.down) return json(500, { message: "server error" });
+      if (o.invalidName === name || o.allInvalid) return json(422, { message: "Validation failed" });
       if (o.dropFirstPut && this.puts === 1) throw new TypeError("network");
       const body = JSON.parse(init.body);
       assert.deepEqual(Object.keys(body).sort(), ["encrypted_value", "key_id"]);
@@ -199,6 +200,36 @@ test("one value fails: it says Failed for that one, the rest are Saved, the key 
   assert.equal(gh.requests.filter((r) => r.url.endsWith("/ANTHROPIC_API_KEY")).length, 2, "one retry after a server error");
   assert.equal(out.key, "destroyed");
   assert.equal(leaks(gh, VALUES.ANTHROPIC_API_KEY), false);
+});
+
+test("GitHub down before anything is saved: the Send stops, the key is kept, the boxes can be kept", async () => {
+  const gh = new FakeGitHub({ down: true });
+  const values = { ...VALUES };
+  const phases = [];
+  await assert.rejects(send(gh, { values, onProgress: (p) => phases.push(p.phase) }), (e) => e.code === "no_answer" && /boxes are kept/.test(e.message));
+  assert.equal(gh.secrets.size, 0);
+  assert.equal(gh.requests.filter((r) => r.method === "PUT").length, 2, "one retry, then it stops: it does not walk through every value");
+  assert.equal(gh.requests.filter((r) => r.url.endsWith("/credentials/revoke")).length, 0, "the key is not destroyed when nothing was saved");
+  assert.ok(!phases.includes("committed"));
+  assert.deepEqual(values, VALUES);
+});
+
+test("the point of no return is the first value GitHub really saves", async () => {
+  let gh = new FakeGitHub({ invalidName: "FOREXCOM_MT5_LOGIN" });
+  const phases = [];
+  const values = { ...VALUES };
+  const out = await send(gh, { values, onProgress: (p) => phases.push(p.phase + (p.name ? ":" + p.name : "")) });
+  assert.equal(out.results.FOREXCOM_MT5_LOGIN.state, "failed");
+  assert.match(out.results.FOREXCOM_MT5_LOGIN.why, /422/);
+  assert.equal(out.saved, 4);
+  assert.deepEqual(phases.slice(0, 4), ["checking", "saving:FOREXCOM_MT5_LOGIN", "saving:FOREXCOM_MT5_SERVER", "committed"]);
+  assert.ok(Object.values(values).every((v) => v === ""), "once under way, the page's copies are dropped");
+  assert.equal(out.key, "destroyed");
+
+  gh = new FakeGitHub({ allInvalid: true });
+  await assert.rejects(send(gh), (e) => e.code === "nothing_saved" && /not destroyed/.test(e.message));
+  assert.equal(gh.requests.filter((r) => r.url.endsWith("/credentials/revoke")).length, 0);
+  assert.equal(gh.requests.filter((r) => r.method === "PUT").length, 5);
 });
 
 test("a dropped connection on a save is retried once, sealed afresh", async () => {

@@ -171,10 +171,11 @@ function failure(status) {
  * @param key           the one-time key (already tidied)
  * @param values        {NAME: value} for the boxes to send (already tidied; empty ones are left alone)
  * @param expectedOwner the GitHub account the site belongs to (from its address or its saved token), or null
- * @param onProgress    called with {phase, name?} - "checking", "saving" + name, "committed" (the first value went through:
- *                      the point of no return, empty the boxes now), "confirming", "destroying"
+ * @param onProgress    called with {phase, name?} - "checking", "saving" + name, "committed" (the first value has been
+ *                      saved: the point of no return, empty the boxes now), "confirming", "destroying"
  * @returns {owner, results: {NAME: {state: "saved"|"failed"|"left", why}}, key: "destroyed"|"accepted"|"not_destroyed", startedAt, finishedAt}
- * @throws DropError when nothing was saved (bad key, no permission, no connection, failed self-test)
+ * @throws DropError when nothing was saved (bad key, no permission, no connection, GitHub fault, failed self-test);
+ *         the key is then left alone and the caller keeps the boxes
  */
 export async function sendSecrets({ key, values, expectedOwner = null, fetchImpl = globalThis.fetch.bind(globalThis), onProgress = () => {}, pause = wait }) {
   const names = SECRET_NAMES.filter((n) => values[n]);
@@ -210,7 +211,11 @@ export async function sendSecrets({ key, values, expectedOwner = null, fetchImpl
 
   const results = {};
   for (const n of SECRET_NAMES) results[n] = { state: "left", why: "" };
-  let saved = 0, attempted = 0;
+  // The point of no return is the first value GitHub actually saves: the page is told ("committed") and empties the
+  // boxes. Until then a refusal of the key, a dropped connection or a GitHub fault stops the Send with nothing saved,
+  // the key untouched and the boxes kept, so one tap sends again.
+  let saved = 0;
+  const done = [];
   for (const name of names) {
     onProgress({ phase: "saving", name });
     let status = -1;
@@ -228,18 +233,29 @@ export async function sendSecrets({ key, values, expectedOwner = null, fetchImpl
       if (!(status === 0 || status >= 500)) break;                    // only a dropped connection or a GitHub hiccup is worth one more try
       await pause(1500);
     }
-    if ((status === 403 || status === 404) && attempted === 0) {
-      throw new DropError("read_only_key", "GitHub accepted the key and it can see the secrets, but it is not allowed to save them. Nothing was saved. On GitHub, open the key, set Secrets to Read and write (not Read-only), save it, then tap Send again.");
+    const ok = status === 201 || status === 204;
+    if (!ok && saved === 0) {
+      if (status === 403 || status === 404) {
+        throw new DropError("read_only_key", "GitHub accepted the key and it can see the secrets, but it is not allowed to save them. Nothing was saved. On GitHub, open the key, set Secrets to Read and write (not Read-only), save it, then tap Send again.");
+      }
+      if (status === 401) throw new DropError("key_rejected", "GitHub stopped accepting the one-time key. Nothing was saved.");
+      if (status === 0 || status >= 500) {
+        throw new DropError("no_answer", `GitHub did not answer while saving (${status === 0 ? "connection" : `its own error ${status}`}). Nothing was saved and your boxes are kept. Tap Send again in a minute.`);
+      }
     }
-    attempted += 1;
-    if (attempted === 1) onProgress({ phase: "committed" });
-    if (status === 201 || status === 204) {
+    done.push(name);
+    if (ok) {
       saved += 1;
       results[name] = { state: "saved", why: "" };
+      if (saved === 1) onProgress({ phase: "committed" });
     } else {
       results[name] = { state: "failed", why: status === -1 ? "this browser could not seal it" : failure(status) };
     }
-    values[name] = "";                                                 // the page's copy of the text is dropped as soon as it has been sent
+    if (saved > 0) for (const n of done) values[n] = "";             // the page's copy of the text is dropped once the Send is under way
+  }
+  if (saved === 0) {
+    const why = [...new Set(names.map((n) => results[n].why))].join("; ");
+    throw new DropError("nothing_saved", `GitHub did not save any of the values (${why}). Nothing was saved and your boxes are kept. The one-time key was not destroyed.`);
   }
 
   // Ask GitHub what it now holds (names and times only; GitHub never gives a value back).
