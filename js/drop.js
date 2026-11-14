@@ -300,10 +300,10 @@ export function forexcomPart(doc, login) {
  *  password that could trade. The MetaTrader steps are MetaQuotes' own, for the iPhone / iPad app. */
 export const INVESTOR_STEPS = [
   "In the MetaTrader 5 app, in this FOREX.com account: tap Settings, tap the account at the top, then tap that same account again in the list.",
-  "At the bottom tap Change Password, then Change Investor Password.",
-  "Current: the password you log in with now. New and Confirm: a new password of your own, at least 8 characters with a capital letter, a small letter, a number and a symbol (like # or !). Save it. Your normal password stays as it is.",
+  "Tap Change Password. It asks which password to change: choose the investor password, not the master one. (Changing the master one only changes your main password, which can still trade.)",
+  "Current: the password you log in with now. New and Confirm: a different password that you make up, at least 8 characters with a capital letter, a small letter, a number and a symbol (like # or !). Tap Change at the top right and wait for the message that it changed. Your normal password stays as it is.",
   "Back on this page, under Replace a value: type the site password and tap Open.",
-  "Fill in only FOREXCOM_MT5_PASSWORD, with the new investor password. Make a new one-time key, paste it in the last box and tap Send. The check then starts by itself.",
+  "Fill in only FOREXCOM_MT5_PASSWORD, with the NEW investor password, not the one you log in with. Make a new one-time key, paste it in the last box and tap Send. The check then starts by itself.",
 ];
 
 /**

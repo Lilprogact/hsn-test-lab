@@ -407,8 +407,8 @@ test("after a check: the steps for the investor password, or that the download i
   assert.equal(next.kind, "investor");
   assert.match(next.title, /^The login itself works\./);
   assert.deepEqual(next.items, INVESTOR_STEPS);
-  assert.match(INVESTOR_STEPS[1], /Change Password, then Change Investor Password/);
-  assert.match(INVESTOR_STEPS[4], /only FOREXCOM_MT5_PASSWORD/);
+  assert.match(INVESTOR_STEPS[1], /choose the investor password, not the master one/);
+  assert.match(INVESTOR_STEPS[4], /only FOREXCOM_MT5_PASSWORD, with the NEW investor password, not the one you log in with/);
   assert.ok(INVESTOR_STEPS.every((s) => !/trading password in|send .* to Claude/i.test(s)));
 
   // the login passes: the download is on its way even though the optional feed token does not work
