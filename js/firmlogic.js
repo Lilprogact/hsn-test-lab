@@ -211,3 +211,31 @@ export function tokenHelp(error) {
   if (kind === "network") return { title: "GitHub could not be reached. Check the connection and try again.", steps: [], link: null };
   return { title: error?.message || "Something went wrong reading the firm's files.", steps: [], link: null };
 }
+
+// The 500-pound test (the engine's from_500): what a small account would have become with each record holder's own
+// strategy, replayed from random past start dates. Rows for the page; every figure is the engine's.
+const gbp = (v) => (v === null || v === undefined || Number.isNaN(+v)) ? "—" : "£" + (+v).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+export function from500View(firm) {
+  const f = firm?.from_500, rec = firm?.records || {};
+  if (!f || !f.by_idea) return null;
+  const rows = [], seen = new Set();
+  for (const [key, label] of [["top_pips", "Most pips"], ["top_win", "Highest win rate"], ["top_money", "Most money made"], ["best", "Best overall"]]) {
+    const card = rec[key];
+    if (!card?.idea) continue;
+    if (seen.has(card.idea)) { const row = rows.find((r) => r.idea === card.idea); if (row) row.Record += ` · ${label.toLowerCase()}`; continue; }
+    seen.add(card.idea);
+    const t = f.by_idea[card.idea];
+    const base = { idea: card.idea, agent: card.agent, Record: label, Agent: card.name || card.agent || "—" };
+    if (!t || t.error) { rows.push({ ...base, "Middle result": "—", Worst: "—", Best: "—", "Ended in profit": "—", "On months no agent has seen": t?.error ? "could not be replayed" : "too few trades to test" }); continue; }
+    rows.push({ ...base, "Middle result": gbp(t.middle_end), Worst: gbp(t.worst_end), Best: gbp(t.best_end), "Ended in profit": `${Math.round(t.ended_in_profit_pct)} in 100 starts`,
+      "On months no agent has seen": t.unseen ? `${gbp(t.unseen.middle_end)} (worst ${gbp(t.unseen.worst_end)}, ${t.unseen.runs} starts)` : "no full run fits yet" });
+  }
+  if (!rows.length) return null;
+  const risk = rows.length && Object.values(f.by_idea).find((t) => t && t.risk_pct_per_trade != null)?.risk_pct_per_trade;
+  return {
+    title: `The £${Math.round(f.start_gbp)} test: what £${Math.round(f.start_gbp)} would have become in ${f.weeks} weeks`,
+    help: `Each record holder's own strategy, replayed on the real prices from ${f.runs} random past start dates, risking ${risk ?? 1}% of the account on every trade. Most of the history is months the agents practised on, so the last column, on months no agent has ever seen, is the honest one. It is a replay of the past, not a promise.`,
+    columns: ["Record", "Agent", "Middle result", "Worst", "Best", "Ended in profit", "On months no agent has seen"], rows,
+  };
+}

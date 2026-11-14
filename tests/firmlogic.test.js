@@ -2,6 +2,7 @@
 // the ticker's lines and the token help. Every figure in these tests is made up; none is shown on the site.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { from500View } from "../js/firmlogic.js";
 import { PACES, nextShift, readiness, scoreboard, eventLine, tokenHelp, MIN_TRADES_FOR_WIN_RANK, SHIFT, shiftsLeft, shiftPlan, shiftPlanWords, minutesUsedThisMonth, minutesNote, lookWords, CODE_WORDS } from "../js/firmlogic.js";
 
 test("the four paces match the engine's schedules", () => {
@@ -209,4 +210,24 @@ test("moved up counts every move since the firm started, not only the ones among
   assert.equal(scoreboard({ agents: {}, recent_events: recent }).levelUps, 0);
   assert.equal(scoreboard({ agents: {}, recent_events: recent, event_totals: { level_up: 2, swapped_down: 2 } }).levelUps, 2);
   assert.equal(scoreboard({ agents: {}, recent_events: [{ kind: "level_up" }] }).levelUps, 1);
+});
+
+test("the £500 test: one row a record holder, the engine's own figures, and the unseen months said apart", () => {
+  assert.equal(from500View({}), null);
+  const run = { start_gbp: 500, weeks: 4, risk_pct_per_trade: 1, runs: 50, middle_end: 530.77, worst_end: 433.44, best_end: 694.17, ended_in_profit_pct: 86, trades_per_run: 36.4,
+    unseen: { months: ["2026-10", "2026-11"], runs: 12, middle_end: 557.69, worst_end: 498.53, best_end: 591.11, ended_in_profit_pct: 91.7 } };
+  const firm = { records: { top_pips: { idea: "I1", agent: "A001", name: "Kelra" }, top_win: { idea: "I2", agent: "A002", name: "Nelen" }, top_money: { idea: "I3", agent: "A003", name: "Jora" }, best: { idea: "I3", agent: "A003", name: "Jora" } },
+    from_500: { start_gbp: 500, weeks: 4, runs: 50, by_idea: { I1: { ...run, unseen: null }, I2: null, I3: run } } };
+  const v = from500View(firm);
+  assert.equal(v.title, "The £500 test: what £500 would have become in 4 weeks");
+  assert.match(v.help, /50 random past start dates, risking 1% of the account on every trade/);
+  assert.match(v.help, /not a promise/);
+  assert.deepEqual(v.rows.map((r) => r.Record), ["Most pips", "Highest win rate", "Most money made · best overall"]);
+  assert.equal(v.rows[2]["Middle result"], "£530.77");
+  assert.equal(v.rows[2].Worst, "£433.44");
+  assert.equal(v.rows[2]["Ended in profit"], "86 in 100 starts");
+  assert.equal(v.rows[2]["On months no agent has seen"], "£557.69 (worst £498.53, 12 starts)");
+  assert.equal(v.rows[0]["On months no agent has seen"], "no full run fits yet");
+  assert.equal(v.rows[1]["Middle result"], "—");
+  assert.equal(v.rows[1]["On months no agent has seen"], "too few trades to test");
 });

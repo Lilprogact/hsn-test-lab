@@ -9,6 +9,7 @@ import { state, startRun, liveText } from "./app.js";
 import { ukDateTime } from "./clock.js";
 import { h, card, stat, table, badge, field, select, input, money, num, pct, signed, openModal, closeModal, mdLite } from "./ui.js";
 import { Building, LEVEL_COLORS, BAR_COLORS, isRunning, coverageWorld } from "./building.js";
+import { from500View } from "./firmlogic.js";
 import { PACES, nextShift, readiness, scoreboard, eventLine, tokenHelp, shiftPlan, shiftPlanWords, minutesUsedThisMonth, minutesNote } from "./firmlogic.js";
 import { ChallengeReplay } from "./replay.js";
 
@@ -300,6 +301,11 @@ export class FirmView {
       stat("Own strategy code", sb.strategies, `${sb.waiting} waiting for the sandbox · ${sb.agentsWithCode} agents trade their own code`),
       stat("Moved up", sb.levelUps, `${sb.challenges} challenges taken so far`),
       stat("AI this month", `$${(+sb.spent || 0).toFixed(2)}`, `of $${num(sb.budget, 0)} · ${num(minutesUsedThisMonth(state.minutes), 0)} of ${num(sb.minutesBudget, 0)} GitHub minutes`));
+    // the £500 test for the record holders (the engine's own figures; firmlogic.from500View)
+    const f5 = from500View(this.firm);
+    if (!this.from500El) { this.from500El = h("div", { class: "card from500" }); this.scoreEl.after(this.from500El); }
+    this.from500El.hidden = !f5;
+    if (f5) this.from500El.replaceChildren(h("h3", {}, f5.title), table(f5.columns, f5.rows), h("p", { class: "help" }, f5.help));
   }
 
   paintTicker() {
