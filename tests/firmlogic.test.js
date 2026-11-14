@@ -2,7 +2,7 @@
 // the ticker's lines and the token help. Every figure in these tests is made up; none is shown on the site.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { from500View } from "../js/firmlogic.js";
+import { from500View, auditWords } from "../js/firmlogic.js";
 import { PACES, nextShift, readiness, scoreboard, eventLine, tokenHelp, MIN_TRADES_FOR_WIN_RANK, SHIFT, shiftsLeft, shiftPlan, shiftPlanWords, minutesUsedThisMonth, minutesNote, lookWords, CODE_WORDS } from "../js/firmlogic.js";
 
 test("the four paces match the engine's schedules", () => {
@@ -222,6 +222,10 @@ test("the £500 test: one row a record holder, the engine's own figures, and the
   assert.equal(v.title, "The £500 test: what £500 would have become in 4 weeks");
   assert.match(v.help, /50 random past start dates, risking 1% of the account on every trade/);
   assert.match(v.help, /not a promise/);
+  assert.match(v.sizes, /exact, as if any size could be traded/);
+  assert.match(v.sizes, /whole ounces/);
+  assert.match(v.sizes, /with £500 the smallest real trade often risks far more than 1% of the account/);
+  assert.match(v.sizes, /not as what a real £500 account would have made/);
   assert.deepEqual(v.rows.map((r) => r.Record), ["Most pips", "Highest win rate", "Most money made · best overall"]);
   assert.equal(v.rows[2]["Middle result"], "£530.77");
   assert.equal(v.rows[2].Worst, "£433.44");
@@ -230,4 +234,16 @@ test("the £500 test: one row a record holder, the engine's own figures, and the
   assert.equal(v.rows[0]["On months no agent has seen"], "no full run fits yet");
   assert.equal(v.rows[1]["Middle result"], "—");
   assert.equal(v.rows[1]["On months no agent has seen"], "too few trades to test");
+});
+
+test("the Audit desk in words: what was judged, and the broker's real trade sizes beside it", () => {
+  assert.equal(auditWords(null), "");
+  const a = { ok: true, fast_pnl_gbp: 1241.64, audit_pnl_gbp: 1222.48, fast_sets: 31, audit_sets: 31, lookahead_violations: 0 };
+  assert.equal(auditWords(a), "Audit desk re-run (separately written code): agreed — fast £1241.64 v event-driven £1222.48, 31 v 31 sets, 0 look-ahead violations.",
+    "an audit from before the real sizes were kept reads as it always did");
+  const real = auditWords({ ...a, real_lots: { pnl_gbp: 815.11, sets: 31, not_opened_below_minimum: 0 } });
+  assert.match(real, /agreed — fast £1241\.64 v event-driven £1222\.48/);
+  assert.match(real, /With the broker's real trade sizes on this account the same re-run made £815\.11 in 31 sets; that figure is for information and is not judged\.$/);
+  assert.match(auditWords({ ...a, ok: false, real_lots: { pnl_gbp: 0, sets: 0, not_opened_below_minimum: 40 } }), /DISAGREED .* made £0 in 0 sets \(40 too small to open\);/);
+  assert.equal(auditWords({ ok: false, reason: "no bars in the audit months" }), "Audit desk: could not re-run it (no bars in the audit months).");
 });

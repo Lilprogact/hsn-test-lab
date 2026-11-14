@@ -236,6 +236,21 @@ export function from500View(firm) {
   return {
     title: `The £${Math.round(f.start_gbp)} test: what £${Math.round(f.start_gbp)} would have become in ${f.weeks} weeks`,
     help: `Each record holder's own strategy, replayed on the real prices from ${f.runs} random past start dates, risking ${risk ?? 1}% of the account on every trade. Most of the history is months the agents practised on, so the last column, on months no agent has ever seen, is the honest one. It is a replay of the past, not a promise.`,
+    // found 15 Nov 2026: the engine sizes these trades exactly; FOREX.com's gold contract trades in whole ounces
+    sizes: `The trade sizes here are exact, as if any size could be traded. A real account can only trade the broker's sizes (at FOREX.com gold moves in whole ounces), and with £${Math.round(f.start_gbp)} the smallest real trade often risks far more than ${risk ?? 1}% of the account. So read this table as a fair comparison of the strategies, not as what a real £${Math.round(f.start_gbp)} account would have made.`,
     columns: ["Record", "Agent", "Middle result", "Worst", "Best", "Ended in profit", "On months no agent has seen"], rows,
   };
+}
+
+// The Audit desk's verdict on an idea, in words (engine: hsnlab/firm/audit.py). What is judged is a re-run sized exactly
+// to the risk, as the fast evaluation is; `real_lots` is the same re-run with the broker's real trade sizes, for information.
+export function auditWords(audit) {
+  if (!audit) return "";
+  if (audit.audit_pnl_gbp === undefined || audit.audit_pnl_gbp === null) return `Audit desk: could not re-run it${audit.reason ? ` (${audit.reason})` : ""}.`;
+  let s = `Audit desk re-run (separately written code): ${audit.ok ? "agreed" : "DISAGREED"} — fast £${audit.fast_pnl_gbp} v event-driven £${audit.audit_pnl_gbp}, ${audit.fast_sets} v ${audit.audit_sets} sets, ${audit.lookahead_violations} look-ahead violations.`;
+  const r = audit.real_lots;
+  if (r && r.pnl_gbp !== undefined && r.pnl_gbp !== null) {
+    s += ` With the broker's real trade sizes on this account the same re-run made £${r.pnl_gbp} in ${r.sets} sets${r.not_opened_below_minimum ? ` (${r.not_opened_below_minimum} too small to open)` : ""}; that figure is for information and is not judged.`;
+  }
+  return s;
 }

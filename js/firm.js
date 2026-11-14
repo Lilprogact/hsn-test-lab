@@ -9,7 +9,7 @@ import { state, startRun, liveText } from "./app.js";
 import { ukDateTime } from "./clock.js";
 import { h, card, stat, table, badge, field, select, input, money, num, pct, signed, openModal, closeModal, mdLite } from "./ui.js";
 import { Building, LEVEL_COLORS, BAR_COLORS, isRunning, coverageWorld } from "./building.js";
-import { from500View } from "./firmlogic.js";
+import { from500View, auditWords } from "./firmlogic.js";
 import { PACES, nextShift, readiness, scoreboard, eventLine, tokenHelp, shiftPlan, shiftPlanWords, minutesUsedThisMonth, minutesNote } from "./firmlogic.js";
 import { ChallengeReplay } from "./replay.js";
 
@@ -305,7 +305,7 @@ export class FirmView {
     const f5 = from500View(this.firm);
     if (!this.from500El) { this.from500El = h("div", { class: "card from500" }); this.scoreEl.after(this.from500El); }
     this.from500El.hidden = !f5;
-    if (f5) this.from500El.replaceChildren(h("h3", {}, f5.title), table(f5.columns, f5.rows), h("p", { class: "help" }, f5.help));
+    if (f5) this.from500El.replaceChildren(h("h3", {}, f5.title), table(f5.columns, f5.rows), h("p", { class: "help" }, f5.help), h("p", { class: "help" }, f5.sizes));
   }
 
   paintTicker() {
@@ -557,7 +557,7 @@ export class FirmView {
         luck?.runs ? h("p", { class: "muted" }, `Luck check: against ${luck.runs} random strategies with the same number of trades, distances and times of day, the best random made £${num(luck.best_pnl, 0)} and this made £${num(luck.candidate_pnl_static, 0)}: ${luck.beats_best ? "it beat every one" : "it did NOT beat the best random"}.`) : h("p", { class: "muted small" }, "Luck check: run when an idea passes a challenge."),
         file.house ? h("p", { class: file.house.beats_as_is ? "good" : "muted" }, `House benchmark, the indicator as is on the same ${file.house.months} months: ${file.house.as_is.sets} sets, avg R ${signed(file.house.as_is.avg_r, 3)}, Month Score ${num(file.house.as_is.month_score, 1)}. This idea ${file.house.beats_as_is ? "beats it" : "does not beat it yet"}.`
           + (file.house.waves?.sets ? ` Your Waves code (by average R): ${signed(file.house.waves.avg_r, 3)} — ${file.house.beats_waves_avg_r ? "beaten" : "not beaten"}.` : ` Your Waves code: ${file.house.waves?.note || "no run yet"}.`)) : null,
-        audit ? h("p", { class: "muted" }, `Audit desk re-run (separately written code): ${audit.ok ? "agreed" : "DISAGREED"} — fast £${audit.fast_pnl_gbp} v event-driven £${audit.audit_pnl_gbp}, ${audit.fast_sets} v ${audit.audit_sets} sets, ${audit.lookahead_violations} look-ahead violations.`) : null) : null,
+        audit ? h("p", { class: "muted" }, auditWords(audit)) : null) : null,
 
       g ? card(`Its group: ${g.id} (floor ${g.floor})`, h("div", { class: "row" }, ...g.members.map((m) => { const mid = m.id || m; return h("button", { class: `chip ${mid === id ? "on" : ""}`, type: "button", onclick: () => this.openAgent(mid) }, m.name || this.nameOf(mid)); })),
         g.strategy_idea ? h("div", {}, h("p", {}, h("b", {}, `Group strategy ${g.strategy_idea.id}: `), g.strategy_idea.hypothesis), h("ul", { class: "rules" }, ...(g.strategy_idea.in_words || []).map((x) => h("li", {}, x)))) : h("p", { class: "muted" }, "No group strategy agreed yet (it takes at least 3 members with tested ideas)."),
