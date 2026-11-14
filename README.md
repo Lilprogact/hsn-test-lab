@@ -91,7 +91,8 @@ note when forex is open but gold is frozen.
 ## One-time setup: the secret drop
 
 Open `…/hsn-test-lab/#setup` (or the **Setup** tab). The page has one hidden box each for `FOREXCOM_MT5_LOGIN`,
-`FOREXCOM_MT5_SERVER`, `FOREXCOM_MT5_PASSWORD` (the investor, read-only password), `ANTHROPIC_API_KEY` and
+`FOREXCOM_MT5_SERVER`, `FOREXCOM_MT5_PASSWORD` (the investor, read-only password; or a demo account's own, which
+Hassan allowed on 14 Nov 2026), `ANTHROPIC_API_KEY` and
 `VPS_FEED_READ_TOKEN`, and a last box for a **one-time key**.
 
 What happens on **Send** (`js/drop.js`, `js/sealedbox.js`):

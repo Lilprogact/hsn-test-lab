@@ -104,7 +104,7 @@ test("the plan says what its minutes figure rests on, and says so when that coun
 
 test("Start waits for price history and says exactly what is missing", () => {
   const none = readiness({ coverage: { symbols: {} } }, { secrets: {}, data: {} }, {});
-  assert.equal(none.ok, false); assert.match(none.why, /put the FOREX.com MT5 read-only login in/); assert.equal(none.setup, true);
+  assert.equal(none.ok, false); assert.match(none.why, /put the FOREX.com MT5 login in/); assert.equal(none.setup, true);
   const wrong = readiness({ coverage: null }, { secrets: { forexcom_mt5_login: true }, logins_checked: { forexcom: { state: "failed" } }, data: { XAUUSD: { bars: 0 } } }, {});
   assert.match(wrong.why, /read-only investor password/);
   const loading = readiness({}, { secrets: { forexcom_mt5_login: true }, logins_checked: { forexcom: { state: "ok" } } }, {});

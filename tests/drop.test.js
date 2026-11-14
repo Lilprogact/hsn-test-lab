@@ -423,6 +423,13 @@ test("after a check: the steps for the investor password, or that the download i
   next = whatNext({ forexcom: { state: "ok" }, anthropic: { state: "failed" }, feed: { state: "ok" } });
   assert.deepEqual(next.items, ["HSN Capital also needs the Anthropic key to work before it can start."]);
 
+  // a demo account's own password, allowed by the owner for a demo: it works, and it is never called read-only
+  const demo = resultLine(doc, { checked_at: "2026-11-14T10:08:00Z", request_id: "r1", state: "ok", reason: "ok_demo_trading_password", demo: true, read_only: false },
+    { requestId: "r1", startedAt: started, now: Date.parse(started) + 9 * 60000 });
+  assert.ok(demo.line.startsWith("FOREX.com demo login: works (a demo account with its normal password, which you allowed for a demo; it is not read-only) · Anthropic key: works"), demo.line);
+  assert.equal(whatNext(demo.parts).kind, "downloading");
+  assert.ok(resultLine(doc, { checked_at: "2026-11-14T10:08:00Z", request_id: "r1", state: "ok", reason: "ok" }, { requestId: "r1", startedAt: started, now: Date.parse(started) + 9 * 60000 }).line.startsWith("FOREX.com read-only login: works ·"));
+
   // anything else adds nothing to the one line: still checking, a wrong login, a machine that could not start MetaTrader
   assert.equal(whatNext(parts(null)), null);
   assert.equal(whatNext(parts({ checked_at: "2026-11-14T10:08:00Z", request_id: "r1", state: "failed", reason: "login_refused", detail: "FOREX.com refused the login." })), null);

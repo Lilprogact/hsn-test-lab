@@ -227,7 +227,7 @@ export class SetupView {
     if (name === "FOREXCOM_MT5_PASSWORD") return d("Which password is this?",
       h("p", {}, "The investor password lets a program look but never trade. It is a second password on the same account, and you make it yourself:"),
       h("ol", {}, ...INVESTOR_STEPS.slice(0, 3).map((s) => h("li", {}, s))),
-      h("p", {}, "The engine checks it: if this box holds a password that could place a trade, the engine refuses to use it and tells you."));
+      h("p", {}, "The engine checks it: if this box holds a password that could place a trade, the engine refuses to use it and tells you. One exception, which you allowed on 14 Nov 2026: a demo account's normal password is accepted. A real account's never is."));
     if (name === "ANTHROPIC_API_KEY") return d("Where do I get it?", h("ol", {},
       h("li", {}, "Open ", link(CONSOLE_KEYS, "the Claude Console, API keys"), " and tap Create key."),
       h("li", {}, "Choose a workspace for it (Default is fine). A key made without a workspace does not work here."),
@@ -347,7 +347,7 @@ export class SetupView {
         failed ? h("p", { class: "warnc" }, "A value that failed was not saved. Open the page below with your password and send just that one again (with a new one-time key).") : null,
         h("p", { class: "help" }, "Only names are kept here, never a value. GitHub itself never shows a secret again either.")),
       card("Do they work?", this.lineEl, this.lineMeta, this.nextEl, h("div", { class: "row" }, this.checkBtn),
-        h("p", { class: "help" }, "The engine tries each login: the Anthropic key and the feed token take under a minute; the FOREX.com login needs a Windows machine at GitHub to install MetaTrader 5 and log in read-only, about 8 minutes. Only yes or no and one sentence are recorded.")),
+        h("p", { class: "help" }, "The engine tries each login: the Anthropic key and the feed token take under a minute; the FOREX.com login needs a Windows machine at GitHub to install MetaTrader 5 and log in, about 8 minutes. Only yes or no and one sentence are recorded.")),
       card("Replace a value", h("p", {}, "The page opens again only with the site password, and only to replace a value."),
         h("div", { class: "row" }, h("label", { class: "field drop-pass", for: pass.id }, h("span", {}, "Site password"), pass), h("button", { type: "button", class: "secondary", onclick: open }, "Open")), passErr));
     this.renderLine();

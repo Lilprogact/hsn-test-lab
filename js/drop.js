@@ -20,7 +20,7 @@ const TIMEOUT_MS = 25000;
 export const FIELDS = [
   { name: "FOREXCOM_MT5_LOGIN", label: "FOREX.com MT5 login", what: "The account number: digits only.", tidy: "nospace", keyboard: "numeric" },
   { name: "FOREXCOM_MT5_SERVER", label: "FOREX.com MT5 server", what: "The server name, exactly as MetaTrader or FOREX.com's email shows it.", tidy: "ends" },
-  { name: "FOREXCOM_MT5_PASSWORD", label: "FOREX.com MT5 investor password", what: "The investor (read-only) password. Never the trading password.", tidy: "ends" },
+  { name: "FOREXCOM_MT5_PASSWORD", label: "FOREX.com MT5 password", what: "The investor (read-only) password. For a demo account its normal password is accepted too, because you allowed that on 14 Nov 2026. For a real account: only the investor one.", tidy: "ends" },
   { name: "ANTHROPIC_API_KEY", label: "Anthropic API key", what: "From the Claude Console, API keys. It starts with sk-ant-.", tidy: "nospace" },
   { name: "VPS_FEED_READ_TOKEN", label: "VPS feed read-only token", what: "Optional. A GitHub token that can only read hsn-vps-feed (Contents: Read-only). Leave empty until that repository exists.", tidy: "nospace" },
 ];
@@ -350,9 +350,12 @@ export function resultLine(doc, login, { requestId = null, startedAt = null, now
     fx.detail = "the Windows machine has not answered after 30 minutes: look under Actions in hsn-test-lab-engine";
   }
   const parts = { forexcom: fx, anthropic: doc.anthropic || {}, feed: doc.feed || {} };
-  const bits = [["FOREX.com read-only login", parts.forexcom], ["Anthropic key", parts.anthropic], ["Feed access", parts.feed]].map(([label, p]) => {
+  // a demo account's own password (allowed by the owner for a demo) is never called read-only
+  const demoOwn = parts.forexcom.state === "ok" && parts.forexcom.reason === "ok_demo_trading_password";
+  const bits = [[demoOwn ? "FOREX.com demo login" : "FOREX.com read-only login", parts.forexcom], ["Anthropic key", parts.anthropic], ["Feed access", parts.feed]].map(([label, p]) => {
     const state = p.state || "not_checked";
     let text = `${label}: ${WORDS[state] || state}`;
+    if (p === parts.forexcom && demoOwn) text += " (a demo account with its normal password, which you allowed for a demo; it is not read-only)";
     if (state === "checking") text += " (about 8 minutes)";
     else if (state !== "ok" && p.detail && p.reason !== "missing") text += ` (${trimDot(p.detail)})`;
     else if (state === "ok" && p.warning) text += ` (but ${trimDot(p.warning)})`;

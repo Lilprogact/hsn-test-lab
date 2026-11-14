@@ -100,11 +100,11 @@ export class SettingsView {
     const mt5Card = card("FOREX.com history from MT5 in the cloud (no VPS needed)", this.mt5El,
       h("div", { class: "row" },
         h("button", { class: "primary", onclick: async () => {
-          if (!confirm("Start the price download now? A Windows machine at GitHub installs MetaTrader 5, logs in read-only with the FOREX.com values saved from the One-time setup page, brings the 1-minute history up to date and runs the Data check. A weekly top-up takes about 15 minutes; the first download can take up to an hour. Windows minutes count double against the GitHub allowance.")) return;
+          if (!confirm("Start the price download now? A Windows machine at GitHub installs MetaTrader 5, logs in with the FOREX.com values saved from the One-time setup page, brings the 1-minute history up to date and runs the Data check. A weekly top-up takes about 15 minutes; the first download can take up to an hour. Windows minutes count double against the GitHub allowance.")) return;
           try { await gh.dispatch(state.token, state.owner, gh.MT5_WORKFLOW, {}); alert("Export requested. Watch it under Runs or in the Actions tab; this card updates when it finishes."); } catch (e) { alert(e.message); }
         } }, "Export FOREX.com history now")),
       h("details", {}, h("summary", {}, "How to set it up (once)"), h("ol", {},
-        h("li", {}, "Use a FOREX.com MT5 account with its READ-ONLY investor password. The engine checks the login and refuses one that could place a trade. FOREX.com emails the account number and the server name; the investor password is set in MetaTrader 5."),
+        h("li", {}, "Use a FOREX.com MT5 account with its READ-ONLY investor password. The engine checks the login and refuses one that could place a trade, with one exception you allowed on 14 Nov 2026: a demo account's normal password. FOREX.com emails the account number and the server name; an investor password is set in MetaTrader 5."),
         h("li", {}, "Put the three values in on the One-time setup page (FOREXCOM_MT5_LOGIN, FOREXCOM_MT5_SERVER, FOREXCOM_MT5_PASSWORD). They are sealed in this browser and saved straight into GitHub's secrets; the engine then checks the login and starts the first export by itself."),
         h("li", {}, "The first download goes back about thirteen months of 1-minute bars, or to where FOREX.com's own history starts, newest month first, and then runs the Data check. Going further back is one setting on the engine's side. After that it runs every Monday at 01:17 UTC and only adds new bars. Export FOREX.com history now starts one by hand."),
         h("li", {}, "If a symbol is not on the server under its usual name, the engine uses the one name there that is a known name for it (the Nasdaq is often named differently). If there are several it does not guess: the report lists them."))));
@@ -145,7 +145,7 @@ export class SettingsView {
       const gold = d.XAUUSD || {};
       const rows = [
         ["Site token saved on this device", ok(vault.hasToken()), "Settings → GitHub token"],
-        ["FOREX.com MT5 login secrets (3)", ok(sec.forexcom_mt5_login), "One-time setup: FOREXCOM_MT5_LOGIN / _SERVER / _PASSWORD (investor, read-only)"],
+        ["FOREX.com MT5 login secrets (3)", ok(sec.forexcom_mt5_login), "One-time setup: FOREXCOM_MT5_LOGIN / _SERVER / _PASSWORD (the investor password, or a demo account's own)"],
         ["Gold 1-minute history in the engine", gold.bars ? badge(`${num(gold.bars, 0)} bars · ${(gold.first_bar || "").slice(0, 10)} → ${(gold.last_bar || "").slice(0, 10)}${gold.kind === "tv" ? " · TRIAL (exports)" : ""}`, "good") : badge("none", "bad"), "Settings → Export FOREX.com history now"],
         ["NAS100 history", (d.NAS100 || {}).bars ? badge(`${num(d.NAS100.bars, 0)} bars`, "good") : badge("none", "warn"), "needs the right FOREX.com symbol name"],
         ["GBP/USD history (for the £ maths)", (d.GBPUSD || {}).bars ? badge(`${num(d.GBPUSD.bars, 0)} bars`, "good") : badge("none — fixed rate used if set", "warn"), ""],

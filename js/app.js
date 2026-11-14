@@ -137,7 +137,7 @@ function renderTrialNotice() {
   const t = trialMode();
   const cov = state.coverage?.symbols?.XAUUSD;
   if (!cov || !cov.months) {
-    el.textContent = "No price data in the engine yet. Put the FOREX.com MT5 read-only (investor) login in on the One-time setup page; the price history then downloads by itself. TradingView exports in data/exports/ are for the match check. Nothing can run until then.";
+    el.textContent = "No price data in the engine yet. Once the FOREX.com MT5 login on the One-time setup page passes its check, the price history downloads by itself. TradingView exports in data/exports/ are for the match check. Nothing can run until then.";
     el.hidden = false; return;
   }
   if (t.trial) { el.textContent = `TRIAL MODE — results are provisional: ${t.reason}`; el.hidden = false; }
