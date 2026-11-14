@@ -106,7 +106,7 @@ export class SettingsView {
       h("details", {}, h("summary", {}, "How to set it up (once)"), h("ol", {},
         h("li", {}, "Use a FOREX.com MT5 account with its READ-ONLY investor password. The engine checks the login and refuses one that could place a trade. FOREX.com emails the account number and the server name; the investor password is set in MetaTrader 5."),
         h("li", {}, "Put the three values in on the One-time setup page (FOREXCOM_MT5_LOGIN, FOREXCOM_MT5_SERVER, FOREXCOM_MT5_PASSWORD). They are sealed in this browser and saved straight into GitHub's secrets; the engine then checks the login and starts the first export by itself."),
-        h("li", {}, "The first download goes back about three years of 1-minute bars, or to where FOREX.com's own history starts, newest month first, and then runs the Data check. After that it runs every Monday at 01:17 UTC and only adds new bars. Export FOREX.com history now starts one by hand."),
+        h("li", {}, "The first download goes back about thirteen months of 1-minute bars, or to where FOREX.com's own history starts, newest month first, and then runs the Data check. Going further back is one setting on the engine's side. After that it runs every Monday at 01:17 UTC and only adds new bars. Export FOREX.com history now starts one by hand."),
         h("li", {}, "If a symbol is not on the server under its usual name, the engine uses the one name there that is a known name for it (the Nasdaq is often named differently). If there are several it does not guess: the report lists them."))));
     this.feedEl = h("div", {}, h("p", { class: "muted" }, "Loading…"));
     const feedCard = card("VPS feed (read-only, weekly release)", this.feedEl,
