@@ -203,3 +203,10 @@ test("the scoreboard shows the firm's records when the engine publishes them, so
   assert.equal(withRecords.pips.pips, 25032.4);
   assert.deepEqual(withRecords.stars, { pips: "A009", win: "A001" });
 });
+
+test("moved up counts every move since the firm started, not only the ones among the latest events", () => {
+  const recent = [{ kind: "tested" }, { kind: "challenge_failed" }];
+  assert.equal(scoreboard({ agents: {}, recent_events: recent }).levelUps, 0);
+  assert.equal(scoreboard({ agents: {}, recent_events: recent, event_totals: { level_up: 2, swapped_down: 2 } }).levelUps, 2);
+  assert.equal(scoreboard({ agents: {}, recent_events: [{ kind: "level_up" }] }).levelUps, 1);
+});

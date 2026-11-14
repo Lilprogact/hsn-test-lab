@@ -127,7 +127,8 @@ export function scoreboard(firm) {
     ideas: firm?.library?.ideas ?? 0, verified: firm?.library?.verified ?? 0,
     strategies: (firm?.strategies?.active || []).length, waiting: firm?.strategies?.waiting ?? 0,
     agentsWithCode: agents.filter((a) => a.own_code).length,
-    levelUps: events.filter((e) => e.kind === "level_up").length, challenges: firm?.attempts?.total ?? 0,
+    // since the firm started when the engine publishes its totals; the recent events alone only cover the last few shifts
+    levelUps: firm?.event_totals?.level_up ?? events.filter((e) => e.kind === "level_up").length, challenges: firm?.attempts?.total ?? 0,
     spent: firm?.budget?.firm_spent_usd ?? 0, budget: firm?.budget?.firm_budget_usd ?? 0, minutesBudget: firm?.budget?.minutes_budget ?? 0,
   };
 }
