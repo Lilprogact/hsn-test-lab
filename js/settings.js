@@ -5,6 +5,7 @@ import * as gh from "./github.js";
 import { state, startSettingsWorkflow, loadShared, switchView } from "./app.js";
 import { ukDateTime } from "./clock.js";
 import { h, card, stat, table, badge, field, select, input, num, pct, money } from "./ui.js";
+import { exportView } from "./dataview.js";
 
 function permissionWords(can) {
   const missing = [can.contents === false ? "Contents (Read-only), which lets the site read results" : null, can.actions === false ? "Actions (Read and write), which lets the site start runs" : null].filter(Boolean);
@@ -99,14 +100,14 @@ export class SettingsView {
     const mt5Card = card("FOREX.com history from MT5 in the cloud (no VPS needed)", this.mt5El,
       h("div", { class: "row" },
         h("button", { class: "primary", onclick: async () => {
-          if (!confirm("Start the cloud export now? A Windows runner installs MetaTrader 5, logs in read-only with the FOREX.com secrets saved from the One-time setup page, exports the 1-minute history and contract specs, and runs the Data check. It takes 10–25 minutes and uses about 20–50 Actions minutes (Windows counts double).")) return;
+          if (!confirm("Start the price download now? A Windows machine at GitHub installs MetaTrader 5, logs in read-only with the FOREX.com values saved from the One-time setup page, brings the 1-minute history up to date and runs the Data check. A weekly top-up takes about 15 minutes; the first download can take up to an hour. Windows minutes count double against the GitHub allowance.")) return;
           try { await gh.dispatch(state.token, state.owner, gh.MT5_WORKFLOW, {}); alert("Export requested. Watch it under Runs or in the Actions tab; this card updates when it finishes."); } catch (e) { alert(e.message); }
         } }, "Export FOREX.com history now")),
       h("details", {}, h("summary", {}, "How to set it up (once)"), h("ol", {},
         h("li", {}, "Use a FOREX.com MT5 account with its READ-ONLY investor password. The engine checks the login and refuses one that could place a trade. FOREX.com emails the account number and the server name; the investor password is set in MetaTrader 5."),
         h("li", {}, "Put the three values in on the One-time setup page (FOREXCOM_MT5_LOGIN, FOREXCOM_MT5_SERVER, FOREXCOM_MT5_PASSWORD). They are sealed in this browser and saved straight into GitHub's secrets; the engine then checks the login and starts the first export by itself."),
-        h("li", {}, "The first run asks the server for up to 10 years of 1-minute bars (it gives what it has, usually one to a few years for gold) and runs the Data check. After that it runs every Monday at 01:17 UTC and only adds new bars. Export FOREX.com history now starts one by hand."),
-        h("li", {}, "If a symbol is not found, the report lists the names on that server that look like it (NAS100 is often named differently); re-run the workflow from the Actions tab with the right names in the symbols input."))));
+        h("li", {}, "The first download goes back about three years of 1-minute bars, or to where FOREX.com's own history starts, newest month first, and then runs the Data check. After that it runs every Monday at 01:17 UTC and only adds new bars. Export FOREX.com history now starts one by hand."),
+        h("li", {}, "If a symbol is not on the server under its usual name, the engine uses the one name there that is a known name for it (the Nasdaq is often named differently). If there are several it does not guess: the report lists them."))));
     this.feedEl = h("div", {}, h("p", { class: "muted" }, "Loading…"));
     const feedCard = card("VPS feed (read-only, weekly release)", this.feedEl,
       h("p", { class: "help" }, "The VPS publishes one GitHub Release a week on Lilprogact/hsn-vps-feed (prices, indicator lines, signals, results + a manifest with checksums). The Data check reads the latest release with a read-only token (VPS_FEED_READ_TOKEN in the engine's secrets), verifies every checksum, imports the alerts and the research, and only catalogues the Vantage prices — never a results source. Nothing can write back."));
@@ -181,16 +182,18 @@ export class SettingsView {
     if (!state.token) return;
     try {
       const m = await gh.getJson(state.token, state.owner, "status/mt5_cloud.json");
-      if (!m) { this.mt5El.replaceChildren(h("p", { class: "muted" }, "Never run. Put the three FOREX.com values in on the One-time setup page; the first export then starts by itself.")); return; }
-      if (m.status) { this.mt5El.replaceChildren(h("p", { class: "warnc" }, `${m.status} — ${m.note || ""}`), h("p", { class: "muted" }, `checked ${ukDateTime(m.at)}`)); return; }
-      if (m.probe) { this.mt5El.replaceChildren(h("p", {}, badge(m.terminal_started ? "MetaTrader 5 installs and starts on the cloud runner" : "MetaTrader 5 did not start on the cloud runner", m.terminal_started ? "good" : "bad"), " ", badge(m.api_attached ? "Python API attached" : "Python API not attached (no login yet)", m.api_attached ? "good" : "warn")), h("p", { class: "help" }, m.note || "")); return; }
-      const rows = (m.symbols || []).map((x) => ({ Symbol: x.symbol, "Bars added": x.error ? "—" : num(x.bars_added, 0), "Earliest bar this run": x.error ? "" : (x.earliest_bar_this_run || "").slice(0, 16), "Months touched": x.error ? "" : (x.months_touched || []).join(" "), Problem: x.error ? `${x.error}${x.candidates?.length ? ` · names on this server: ${x.candidates.join(", ")}` : ""}` : "" }));
+      const v = exportView(m);
+      if (v.kind === "never") { this.mt5El.replaceChildren(h("p", { class: "muted" }, "Never run. Put the three FOREX.com values in on the One-time setup page; the first export then starts by itself.")); return; }
+      if (v.kind === "stopped") { this.mt5El.replaceChildren(h("p", { class: "error" }, `The download stopped rather than save something it could not stand behind: ${v.text}`), h("p", { class: "muted" }, `checked ${ukDateTime(v.at)}`)); return; }
+      if (v.kind === "status") { this.mt5El.replaceChildren(h("p", { class: "warnc" }, v.text), h("p", { class: "muted" }, `checked ${ukDateTime(v.at)}`)); return; }
+      if (v.kind === "probe") { this.mt5El.replaceChildren(h("p", {}, badge(m.terminal_started ? "MetaTrader 5 installs and starts on the cloud runner" : "MetaTrader 5 did not start on the cloud runner", m.terminal_started ? "good" : "bad"), " ", badge(m.api_attached ? "Python API attached" : "Python API not attached (no login yet)", m.api_attached ? "good" : "warn")), h("p", { class: "help" }, m.note || "")); return; }
+      const rows = v.rows.map((r) => ({ ...r, "Bars read": r["Bars read"] === undefined ? "" : num(r["Bars read"], 0), Months: r.Months === undefined ? "" : num(r.Months, 0) }));
       this.mt5El.replaceChildren(
-        h("p", {}, badge(`last export ${ukDateTime(m.at)}`, "good"), " ", badge(`${m.terminal?.company || "?"} · build ${m.terminal?.build || "?"}`), " ",
-          m.account ? badge(m.account.read_only_login ? "read-only login (investor password)" : m.account.demo_trading_password ? "demo account, its trading password (allowed by you for a demo)" : "login could trade: refused",
-            m.account.read_only_login ? "good" : m.account.demo_trading_password ? "warn" : "bad") : null, " ",
-          badge(`server clock offset ${num((m.server_utc_offset_seconds || 0) / 3600, 1)} h (${m.offset_measured_from || "?"})`)),
-        table(["Symbol", "Bars added", "Earliest bar this run", "Months touched", "Problem"], rows, { numeric: ["Bars added"] }));
+        h("p", {}, badge(`last download ${ukDateTime(v.at)}`, "good"), " ", badge(v.terminal), " ", v.login ? badge(v.login.text, v.login.kind) : null),
+        h("p", { class: "help" }, v.clock),
+        ...v.notes.map((n) => h("p", { class: "warnc" }, n)),
+        table(["Symbol", "Bars read", "Months", "From", "To", "Note"], rows, { numeric: ["Bars read", "Months"] }),
+        h("p", { class: "help" }, `Months is how many months of 1-minute bars are stored for that symbol; From and To are its first and last stored bar (UTC).${v.askedBackTo ? ` The download was asked to reach back to ${v.askedBackTo}.` : ""} A month is only stored when every hour MetaTrader's own hourly bars show for it is there.`));
     } catch (e) { this.mt5El.replaceChildren(h("p", { class: "error" }, e.message)); }
   }
 

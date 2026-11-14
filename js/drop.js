@@ -296,6 +296,35 @@ export function forexcomPart(doc, login) {
   return doc?.forexcom || {};
 }
 
+/** How to make the read-only (investor) password, and how to put it in. Shown where the engine has refused a
+ *  password that could trade. The MetaTrader steps are MetaQuotes' own, for the iPhone / iPad app. */
+export const INVESTOR_STEPS = [
+  "In the MetaTrader 5 app, in this FOREX.com account: tap Settings, tap the account at the top, then tap that same account again in the list.",
+  "At the bottom tap Change Password, then Change Investor Password.",
+  "Current: the password you log in with now. New and Confirm: a new password of your own, at least 8 characters with a capital letter, a small letter, a number and a symbol (like # or !). Save it. Your normal password stays as it is.",
+  "Back on this page, under Replace a value: type the site password and tap Open.",
+  "Fill in only FOREXCOM_MT5_PASSWORD, with the new investor password. Make a new one-time key, paste it in the last box and tap Send. The check then starts by itself.",
+];
+
+/**
+ * What the owner should do, or expect, after a check. `parts` is resultLine().parts. Returns null when there is
+ * nothing to add to the one line, or {kind, title, items}:
+ *   investor      the login works but its password could trade: the steps to replace it with the investor password
+ *   downloading   the FOREX.com login works: the price history is on its way (and what, if anything, is still missing)
+ */
+export function whatNext(parts = {}) {
+  const fx = parts.forexcom || {}, ai = parts.anthropic || {}, feed = parts.feed || {};
+  if (fx.state === "failed" && fx.reason === "not_read_only") {
+    return { kind: "investor", title: "The login itself works. The saved password is the one that can trade; the Test Lab only takes the one that can look. To swap it (about five minutes):", items: INVESTOR_STEPS };
+  }
+  if (fx.state !== "ok") return null;
+  const items = [];
+  if (ai.state !== "ok") items.push("HSN Capital also needs the Anthropic key to work before it can start.");
+  if (feed.state !== "ok") items.push("The feed is optional: it only adds the VPS's recorded alerts and research. Backtests and HSN Capital work without it.");
+  const all = !items.length;
+  return { kind: "downloading", title: `${all ? "All three work" : "The FOREX.com login works"}. The engine is now downloading the FOREX.com price history (it can take up to an hour the first time; Settings shows it arrive). When it has arrived, the Start button on the HSN Capital page unlocks.`, items };
+}
+
 const MACHINE_REASONS = ["machine_failed", "terminal_not_ready", "check_crashed", "could_not_connect"];
 
 /** ok / failed / unknown. A machine that could not start MetaTrader says nothing about the login itself. */

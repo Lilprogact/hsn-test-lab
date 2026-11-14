@@ -10,7 +10,7 @@ import * as gh from "./github.js";
 import { state } from "./app.js";
 import { ukDateTime } from "./clock.js";
 import { h, card, badge } from "./ui.js";
-import { FIELDS, SECRET_NAMES, CHECK_WORKFLOW, ENGINE_REPO, FEED_REPO, hint, review, sendSecrets, DropError, ownerFromHost, resultLine } from "./drop.js";
+import { FIELDS, SECRET_NAMES, CHECK_WORKFLOW, ENGINE_REPO, FEED_REPO, INVESTOR_STEPS, hint, review, sendSecrets, DropError, ownerFromHost, resultLine, whatNext } from "./drop.js";
 
 const FLAG = "hsn.setup.v1";               // on this device: names with Saved / Failed, and the time. Never a value.
 const IDLE_MS = 60 * 60 * 1000;            // boxes left untouched this long are emptied; after 30 idle minutes the site's own lock already hides them
@@ -224,7 +224,10 @@ export class SetupView {
     const d = (summary, ...body) => h("details", { class: "drop-where" }, h("summary", {}, summary), ...body);
     if (name === "FOREXCOM_MT5_LOGIN") return d("Where do I find it?", h("p", {}, "FOREX.com emails the MetaTrader 5 account number when the account is opened. MetaTrader 5 also shows it next to the account's name."));
     if (name === "FOREXCOM_MT5_SERVER") return d("Where do I find it?", h("p", {}, "It is in the same FOREX.com email as the login, and MetaTrader 5 shows it beside the account number. Copy it exactly, with its capitals, dashes and any number at the end."));
-    if (name === "FOREXCOM_MT5_PASSWORD") return d("Which password is this?", h("p", {}, "The investor password lets a program look but never trade. In MetaTrader 5 it is set under the account's Change password, by choosing the investor (read only) password. The engine checks it: if this box holds a password that could place a trade, the engine refuses to use it and tells you."));
+    if (name === "FOREXCOM_MT5_PASSWORD") return d("Which password is this?",
+      h("p", {}, "The investor password lets a program look but never trade. It is a second password on the same account, and you make it yourself:"),
+      h("ol", {}, ...INVESTOR_STEPS.slice(0, 3).map((s) => h("li", {}, s))),
+      h("p", {}, "The engine checks it: if this box holds a password that could place a trade, the engine refuses to use it and tells you."));
     if (name === "ANTHROPIC_API_KEY") return d("Where do I get it?", h("ol", {},
       h("li", {}, "Open ", link(CONSOLE_KEYS, "the Claude Console, API keys"), " and tap Create key."),
       h("li", {}, "Choose a workspace for it (Default is fine). A key made without a workspace does not work here."),
@@ -378,9 +381,10 @@ export class SetupView {
     const r = resultLine(doc, login, pending ? { requestId: pending.request, startedAt: pending.requestedAt } : {});
     this.lineEl.textContent = r.line;
     this.lineMeta.textContent = doc && (!pending || doc.request_id === pending.request) ? `Checked ${ukDateTime(doc.updated_at)}${login?.checked_at ? ` · FOREX.com ${ukDateTime(login.checked_at)}` : ""}` : "";
-    const p = r.parts || {};
-    const allOk = p.forexcom?.state === "ok" && p.anthropic?.state === "ok" && p.feed?.state === "ok";
-    this.nextEl.replaceChildren(allOk ? h("p", { class: "good" }, "All three work. The engine is now downloading the FOREX.com price history (10 to 50 minutes the first time; Settings shows it arrive). When it has arrived, the Start button on the HSN Capital page unlocks.") : "");
+    const next = whatNext(r.parts || {});
+    this.nextEl.replaceChildren(!next ? ""
+      : next.kind === "investor" ? h("div", { class: "notice warn drop-next" }, h("strong", {}, next.title), h("ol", {}, ...next.items.map((s) => h("li", {}, s))))
+        : h("div", {}, h("p", { class: "good" }, next.title), ...next.items.map((s) => h("p", { class: "muted" }, s))));
     if (pending && r.done) { writeFlag({ ...flag, requestDone: true }); this.stopPolling(); if (this.checkBtn) this.checkBtn.disabled = false; }
   }
 

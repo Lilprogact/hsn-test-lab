@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import nacl from "../js/vendor/tweetnacl.js";
 import { blake2b } from "../js/vendor/blake2b.js";
 import { base64ToBytes, bytesToBase64 } from "../js/sealedbox.js";
-import { FIELDS, SECRET_NAMES, tidy, hint, review, sendSecrets, DropError, ownerFromHost, resultLine, forexcomPart, loginState } from "../js/drop.js";
+import { FIELDS, SECRET_NAMES, tidy, hint, review, sendSecrets, DropError, ownerFromHost, resultLine, forexcomPart, loginState, whatNext, INVESTOR_STEPS } from "../js/drop.js";
 
 const fx = JSON.parse(readFileSync(new URL("./fixtures/sealedbox.json", import.meta.url), "utf8"));
 const hex = (s) => Uint8Array.from(s.match(/../g) || [], (b) => parseInt(b, 16));
@@ -395,6 +395,38 @@ test("the one-line result, as the engine's files fill in", () => {
     forexcom: { state: "missing", reason: "incomplete", detail: "Not all three FOREX.com values are saved yet: missing FOREXCOM_MT5_PASSWORD." } };
   assert.equal(resultLine(none, null).line, "FOREX.com read-only login: not saved yet (Not all three FOREX.com values are saved yet: missing FOREXCOM_MT5_PASSWORD) · Anthropic key: not saved yet · Feed access: does NOT work (GitHub did not accept the token)");
   assert.equal(forexcomPart(doc, { checked_at: "2026-11-16T01:20:00Z", request_id: "", state: "ok" }).state, "ok", "a later weekly check replaces the answer");
+});
+
+test("after a check: the steps for the investor password, or that the download is on its way", () => {
+  const started = "2026-11-14T10:00:00Z";
+  const doc = { request_id: "r1", updated_at: "2026-11-14T10:00:40Z", anthropic: { state: "ok" }, feed: { state: "failed", reason: "no_contents_permission", detail: "the token cannot read the feed." }, forexcom: { state: "checking" } };
+  const parts = (login) => resultLine(doc, login, { requestId: "r1", startedAt: started, now: Date.parse(started) + 9 * 60000 }).parts;
+
+  // the login works but its password could trade: the exact steps, in order, and no talk of a download
+  let next = whatNext(parts({ checked_at: "2026-11-14T10:08:00Z", request_id: "r1", state: "failed", reason: "not_read_only", demo: true, detail: "The login works, but it is the trading password of a demo account." }));
+  assert.equal(next.kind, "investor");
+  assert.match(next.title, /^The login itself works\./);
+  assert.deepEqual(next.items, INVESTOR_STEPS);
+  assert.match(INVESTOR_STEPS[1], /Change Password, then Change Investor Password/);
+  assert.match(INVESTOR_STEPS[4], /only FOREXCOM_MT5_PASSWORD/);
+  assert.ok(INVESTOR_STEPS.every((s) => !/trading password in|send .* to Claude/i.test(s)));
+
+  // the login passes: the download is on its way even though the optional feed token does not work
+  next = whatNext(parts({ checked_at: "2026-11-14T10:08:00Z", request_id: "r1", state: "ok" }));
+  assert.equal(next.kind, "downloading");
+  assert.match(next.title, /^The FOREX\.com login works\. The engine is now downloading the FOREX\.com price history/);
+  assert.deepEqual(next.items, ["The feed is optional: it only adds the VPS's recorded alerts and research. Backtests and HSN Capital work without it."]);
+  next = whatNext({ forexcom: { state: "ok" }, anthropic: { state: "ok" }, feed: { state: "ok" } });
+  assert.match(next.title, /^All three work\./);
+  assert.deepEqual(next.items, []);
+  next = whatNext({ forexcom: { state: "ok" }, anthropic: { state: "failed" }, feed: { state: "ok" } });
+  assert.deepEqual(next.items, ["HSN Capital also needs the Anthropic key to work before it can start."]);
+
+  // anything else adds nothing to the one line: still checking, a wrong login, a machine that could not start MetaTrader
+  assert.equal(whatNext(parts(null)), null);
+  assert.equal(whatNext(parts({ checked_at: "2026-11-14T10:08:00Z", request_id: "r1", state: "failed", reason: "login_refused", detail: "FOREX.com refused the login." })), null);
+  assert.equal(whatNext(parts({ checked_at: "2026-11-14T10:08:00Z", request_id: "r1", state: "failed", reason: "machine_failed", detail: "GitHub's Windows machine could not start MetaTrader 5." })), null);
+  assert.equal(whatNext(), null);
 });
 
 test("the page's own code: no logging, no storage of values, no outside address", () => {

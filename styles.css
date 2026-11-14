@@ -200,6 +200,9 @@ input.drop-input:focus { outline: 2px solid var(--green2); outline-offset: 1px; 
 .drop-msg { margin: 0 0 10px; }
 .drop-msg ul { margin: 6px 0 0; padding-left: 20px; }
 .drop-msg li { margin: 4px 0; overflow-wrap: anywhere; }
+.drop-next { margin: 10px 0; }
+.drop-next ol { margin: 8px 0 0; padding-left: 22px; }
+.drop-next li { margin: 6px 0; }
 .drop-send { min-width: 230px; min-height: 48px; }
 .drop-actions { margin-bottom: 8px; }
 .drop-progress p { margin: 3px 0; }
