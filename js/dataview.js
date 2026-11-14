@@ -107,3 +107,12 @@ export function trialReason(m) {
   if (!m.mt5_passes) return { trial: true, reason: "the indicator is proven the same as TradingView's, but the Lab's prices are not identical to TradingView's to the cent. The gaps are under Settings, waiting for your decision." };
   return { trial: false, reason: "" };
 }
+
+/**
+ * The data badge in HSN Capital's header: what the next shift will run on, from the TradingView check as it stands now.
+ * The firm's own stored flag only changes when a shift runs, so before the first shift it would still show the day
+ * the firm was set up.
+ */
+export function rankingBadge(m) {
+  return trialReason(m).trial ? { text: "TRIAL MODE — nothing ranked for real", kind: "trial" } : { text: "ranking on verified data", kind: "good" };
+}

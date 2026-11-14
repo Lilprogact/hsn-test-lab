@@ -2,7 +2,7 @@
 // in the engine's shape.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { exportView, matchView, trialReason, TV_STEPS } from "../js/dataview.js";
+import { exportView, matchView, trialReason, rankingBadge, TV_STEPS } from "../js/dataview.js";
 
 const report = {
   at: "2026-11-14T13:02:11Z", runner: "github-actions-windows", asked_back_to: "2023-11", more_to_do: false,
@@ -143,4 +143,10 @@ test("once the price gap is accepted the badge says so, and TRIAL MODE ends", ()
   assert.deepEqual(v.badges, [{ text: "indicator: the same as TradingView", kind: "good" }, { text: "prices: within the gap you accepted", kind: "good" }]);
   assert.equal(v.headline, m.headline);
   assert.deepEqual(trialReason(m), { trial: false, reason: "" });
+});
+
+test("HSN Capital's header shows what the next shift will run on, not the flag stored when the firm was set up", () => {
+  assert.deepEqual(rankingBadge(null), { text: "TRIAL MODE — nothing ranked for real", kind: "trial" });
+  assert.deepEqual(rankingBadge(matched), { text: "TRIAL MODE — nothing ranked for real", kind: "trial" });
+  assert.deepEqual(rankingBadge({ ...matched, mt5_passes: true, prices_accepted: true }), { text: "ranking on verified data", kind: "good" });
 });

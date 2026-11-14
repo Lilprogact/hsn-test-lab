@@ -3,6 +3,7 @@
 // Every number shown comes from the engine's files (firm/firm.json, firm/leaderboard.json, firm/agents/<id>.json,
 // firm/challenges/*.json, firm/replays/*.json, the library, minutes, reports, memos) or, while a shift runs, from its
 // live status file. Nothing here makes a number up: where the Engine has no result yet, the page says so.
+import { rankingBadge } from "./dataview.js";
 import * as gh from "./github.js";
 import { state, startRun, liveText } from "./app.js";
 import { ukDateTime } from "./clock.js";
@@ -211,7 +212,7 @@ export class FirmView {
     const n = Object.keys(f.agents || {}).length;
     this.controlEl = h("div", { class: "firm-control" });
     this.sayEl = h("p", { class: "control-note", hidden: true });
-    const head = card(h("span", {}, "HSN Capital ", badge(`shift ${f.cycle}`), " ", f.trial_mode ? badge("TRIAL MODE — nothing ranked for real", "trial") : badge("ranking on verified data", "good"), " ", f.paused ? badge("PAUSED", "warn") : badge("working", "good")),
+    const head = card(h("span", {}, "HSN Capital ", badge(`shift ${f.cycle}`), " ", badge(rankingBadge(state.match).text, rankingBadge(state.match).kind), " ", f.paused ? badge("PAUSED", "warn") : badge("working", "good")),
       this.controlEl, this.sayEl);
 
     const pages = [["company", "Company", `The building with all ${n} agents. Tap an agent or a room.`], ["people", "People", "Every agent's level and progress to the next one."],
