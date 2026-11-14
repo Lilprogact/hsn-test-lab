@@ -187,7 +187,8 @@ export class SettingsView {
       const rows = (m.symbols || []).map((x) => ({ Symbol: x.symbol, "Bars added": x.error ? "—" : num(x.bars_added, 0), "Earliest bar this run": x.error ? "" : (x.earliest_bar_this_run || "").slice(0, 16), "Months touched": x.error ? "" : (x.months_touched || []).join(" "), Problem: x.error ? `${x.error}${x.candidates?.length ? ` · names on this server: ${x.candidates.join(", ")}` : ""}` : "" }));
       this.mt5El.replaceChildren(
         h("p", {}, badge(`last export ${ukDateTime(m.at)}`, "good"), " ", badge(`${m.terminal?.company || "?"} · build ${m.terminal?.build || "?"}`), " ",
-          m.account ? badge(m.account.read_only_login ? "read-only login (investor password)" : "login could trade: refused", m.account.read_only_login ? "good" : "bad") : null, " ",
+          m.account ? badge(m.account.read_only_login ? "read-only login (investor password)" : m.account.demo_trading_password ? "demo account, its trading password (allowed by you for a demo)" : "login could trade: refused",
+            m.account.read_only_login ? "good" : m.account.demo_trading_password ? "warn" : "bad") : null, " ",
           badge(`server clock offset ${num((m.server_utc_offset_seconds || 0) / 3600, 1)} h (${m.offset_measured_from || "?"})`)),
         table(["Symbol", "Bars added", "Earliest bar this run", "Months touched", "Problem"], rows, { numeric: ["Bars added"] }));
     } catch (e) { this.mt5El.replaceChildren(h("p", { class: "error" }, e.message)); }

@@ -290,7 +290,7 @@ export class Building {
       a.group = gid; a.level = floor; a.status = "idle"; a.detail = ""; a.away = null; a.chip = null; a.mood = "neutral";
       const i = g.seats.indexOf(null); if (i >= 0) g.seats[i] = id;
     }
-    this.engine.count = 0; this.flights = []; this.texts = []; this.shot = null;
+    this.engine.count = 0; this.flights = []; this.texts = []; this.shot = null; this.gathering = null;
     this.layout(); this.snapAll();
     this.queue = [...(replay.events || [])]; this.nextAt = this.clock + 0.6;
     this.say(`Replay of shift ${replay.cycle}: ${this.replayTotal} real events`);
@@ -298,7 +298,7 @@ export class Building {
 
   stopReplay(silent = false) {
     if (this.mode !== "replay") return;
-    this.queue = []; this.mode = "idle"; this.lift.riders = []; this.rides = []; this.effects = []; this.flights = []; this.texts = []; this.shot = null;
+    this.queue = []; this.mode = "idle"; this.lift.riders = []; this.rides = []; this.effects = []; this.flights = []; this.texts = []; this.shot = null; this.gathering = null;
     if (this.firm) this.setData(this.firm, this.live);
     for (const a of this.agents.values()) { a.away = null; a.chip = null; a.rides = 0; this.snap(a); }
     if (!silent) this.onEnd?.();
@@ -334,9 +334,9 @@ export class Building {
           let delay = 0;
           if (animate && screen && this.flights.length < MAX_FLIGHTS) {
             // the idea goes down to the Engine and its real result comes back; the Engine's own search starts at the Engine
-            if (search) { delay = this.dur(0.5); this.fly(this.port("engine"), screen, TEAL, 0, delay); }
-            else if (own) { delay = this.dur(0.9); this.fly(this.port("sandbox"), this.port("engine"), PURPLE, 0, this.dur(0.45), "engine"); this.fly(this.port("engine"), screen, good ? GOOD : BAD, this.dur(0.45), this.dur(0.45)); }
-            else { delay = this.dur(0.9); this.fly(screen, this.port("engine"), "#ffe066", 0, this.dur(0.45), "engine"); this.fly(this.port("engine"), screen, v == null ? PAPER : good ? GOOD : BAD, this.dur(0.45), this.dur(0.45)); }
+            if (search) { delay = this.dur(0.5); this.fly(this.port("engine"), screen, TEAL, 0, delay, "desk"); }
+            else if (own) { delay = this.dur(0.9); this.fly(this.port("sandbox"), this.port("engine"), PURPLE, 0, this.dur(0.45), "engine"); this.fly(this.port("engine"), screen, good ? GOOD : BAD, this.dur(0.45), this.dur(0.45), "desk"); }
+            else { delay = this.dur(0.9); this.fly(screen, this.port("engine"), "#ffe066", 0, this.dur(0.45), "engine"); this.fly(this.port("engine"), screen, v == null ? PAPER : good ? GOOD : BAD, this.dur(0.45), this.dur(0.45), "desk"); }
           }
           if (animate) this.engine.count += 1;
           if (v != null) chip(a.id, `${search ? "⚙ " : ""}${v > 0 ? "+" : ""}${Math.round(v)}${e.pips != null ? "p" : ""}${e.win != null && e.pips != null ? " " + Math.round(e.win) + "%" : ""}`, good ? GOOD : BAD, search ? 1.5 : 2.2, delay);
@@ -507,9 +507,11 @@ export class Building {
     const sp = this.mode === "replay" ? this.speed : 1;
     this.clock += dt * sp; this.wall += dt;
     // the director: one real event at a time
-    if (this.queue.length && this.clock >= this.nextAt && this.animations && this.rides.length < 2) {
+    if (this.queue.length && this.clock >= this.nextAt && this.animations && this.rides.length < 2 && this.gathered()) {
       const e = this.queue.shift();
       let wait = this.apply(e, true);
+      // a meeting is shown properly: the next event waits until everyone has walked there and sat down a moment
+      if (e.kind === "meeting_start") this.gathering = { ids: this.members(e), until: this.clock + this.dur(12), sit: this.dur(1.6), at: null };
       const n = this.queue[0];
       const pair = n && ((e.kind === "swapped_down" && !e.solo && n.kind === "level_up" && !n.solo && n.from === e.to && n.to === e.from)      // a won promotion battle
         || (e.kind === "level_up" && e.solo && n.kind === "swapped_down" && n.solo && n.from_group === e.group));                              // moving up alone
@@ -526,7 +528,10 @@ export class Building {
     const reach = 95 * sp * dt;                                  // how far a person walks in this tick
     for (const a of this.agents.values()) {
       const riding = this.lift.riders.indexOf(a.id);
-      if (riding >= 0) { a.x = this.liftW / 2 + (riding - (this.lift.riders.length - 1) / 2) * 5; a.y = this.lift.y + LIFT_CAR_H; a.walking = false; continue; }
+      if (riding >= 0) {                                                                            // in the lift: two rows when it is full
+        const n = this.lift.riders.length, per = n > 3 ? Math.ceil(n / 2) : n, row = riding >= per ? 1 : 0, col = row ? riding - per : riding, inRow = row ? n - per : per;
+        a.x = this.liftW / 2 + (col - (inRow - 1) / 2) * Math.min(8, (this.liftW - 16) / Math.max(1, inRow)); a.y = this.lift.y + LIFT_CAR_H - (row ? 0 : 2.5); a.walking = false; continue;
+      }
       if (a.pause && this.clock < a.pause) a.walking = false;                                       // a moment to celebrate
       else if (a.rides) {                                                                           // booked on the lift: walk to the door, or wait for its turn
         if (a.ride && a.path.length) { if (this.step(a, a.path[0], reach)) { const w = a.path.shift(); if (w.lane != null) a.lane = w.lane; a.walking = a.path.length > 0; } }
@@ -546,7 +551,12 @@ export class Building {
     }
     // things in flight land: the Engine pulses, the sandbox lights up
     let arrived = 0;
-    this.flights = this.flights.filter((f) => { if (this.clock < f.t0 + f.dur) return true; if (f.hit === "engine") { this.engine.pulse = 1; arrived += 1; } else if (f.hit === "sandbox") this.sandboxPulse = 1; return false; });
+    this.flights = this.flights.filter((f) => {
+      if (this.clock < f.t0 + f.dur) return true;
+      if (f.hit === "engine") { this.engine.pulse = 1; arrived += 1; } else if (f.hit === "sandbox") this.sandboxPulse = 1;
+      else if (f.hit === "desk" && this.effects.length < 260) for (let i = 0; i < 7; i++) this.effects.push({ x: f.x1, y: f.y1, vx: (Math.random() - 0.5) * 2.2, vy: -Math.random() * 1.8 - 0.3, life: 16 + Math.random() * 14, c: f.color, size: 1.6 });
+      return false;
+    });
     const e = this.engine, working = this.world.hasData && !this.world.paused;
     e.activity += ((arrived ? 1 : 0) - e.activity) * clamp(dt * 2.5, 0, 1); e.pulse *= Math.exp(-dt * 3.2); this.sandboxPulse *= Math.exp(-dt * 1.6);
     if (working) e.spin += dt * (0.25 + e.activity * 7 + (this.mode === "live" ? 0.8 : 0));
@@ -565,6 +575,18 @@ export class Building {
     const s = Math.min(d, reach); a.x += (dx / d) * s; a.y += (dy / d) * s; a.walking = true;
     if (Math.abs(dx) > 0.4) a.facing = dx > 0 ? 1 : -1;
     return false;
+  }
+
+  /** True unless a meeting is still gathering. Once everyone called to it has arrived they sit a moment; a meeting
+   *  that takes too long to gather is not waited for (the next event may be the one that ends it). */
+  gathered() {
+    const g = this.gathering; if (!g) return true;
+    if (this.clock >= g.until) { this.gathering = null; return true; }
+    const here = g.ids.every((id) => { const a = this.agents.get(id); return !a || (!a.walking && !a.path.length && !a.rides); });
+    if (!here) { g.at = null; return false; }
+    if (g.at == null) g.at = this.clock;
+    if (this.clock - g.at < g.sit) return false;
+    this.gathering = null; return true;
   }
 
   /** Nothing is still on its way: nobody walking or celebrating, nothing in flight, no words in the air. */
@@ -682,6 +704,8 @@ export class Building {
       const r = this.rides[0];                                                                     // people are on their way to the lift and nothing else is showing: go with them
       this.shot = { follow: riding.id, rect: null, pri: 2, until: this.wall + 2.2, lock: 0, label: `${first(riding.name)}${r.ids.length > 1 ? ` and ${r.ids.length - 1} more` : ""}: by lift from floor ${r.from} to floor ${r.to}`, color: PAPER, real: true };
     }
+    const ongoing = this.gathering || this.rides.length || this.flights.length;              // something real is still playing out: stay with it
+    if (this.shot?.real && ongoing && this.wall >= this.shot.until - 0.5) this.shot.until = this.wall + 1;
     if (!this.shot || (this.wall >= this.shot.until && (!this.shot.real || this.wall - this.lastEventAt > 3.5))) {
       // nothing real to show: walk round the building (the badge says whether this is live, a replay, or the firm at rest)
       const stops = this.tour(), stop = stops[this.tourIndex % Math.max(1, stops.length)]; this.tourIndex += 1;

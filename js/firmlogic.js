@@ -99,7 +99,8 @@ export function readiness(state, setup, firm) {
   if (!hasData) {
     const login = setup?.logins_checked?.forexcom;
     const why = login?.state === "ok" ? "The FOREX.com login works; the price history is still downloading. Start unlocks when it has arrived."
-      : setup?.secrets?.forexcom_mt5_login ? "Waiting for the price history: the FOREX.com login has to pass its check first (it must be the read-only investor password). See Setup."
+      : login?.reason === "not_read_only" ? `Waiting for the price history: the FOREX.com login works${login.demo ? " and it is a demo account" : ""}, but the saved password is the trading password and the engine only accepts a read-only (investor) one. See Setup.`
+        : setup?.secrets?.forexcom_mt5_login ? "Waiting for the price history: the FOREX.com login has to pass its check first (it must be the read-only investor password). See Setup."
         : "Waiting for the price history: put the FOREX.com MT5 read-only login in on the Setup page.";
     return { ok: false, why, setup: true };
   }

@@ -332,3 +332,26 @@ test("the sky over the building follows London's clock", () => {
   assert.ok(noon.set - noon.rise > 15.5 && winterNoon.set - winterNoon.rise < 8.5, "long days in June, short in December");
   assert.ok(Math.abs(noon.hour - 13) < 0.01, "12:00 UTC in June is 13:00 in London");
 });
+
+test("a meeting is not ended before the group has walked to its table and sat down", () => {
+  const b = new Building(canvasStub(1150), { animations: true });
+  const f = firm();
+  b.setData(f, null);
+  const members = ["A061", "A062", "A063", "A064", "A065"];
+  b.playReplay({ cycle: 1, start: startOf(f), events: [{ at: "1", kind: "meeting_start", group: "G13", floor: 2, members }, { at: "2", kind: "meeting", group: "G13", strategy: "I1" }, { at: "3", kind: "tested", agent: "A001", pips: 5, win: 50 }] }, { speed: 4 });
+  run(b, 0.6);
+  assert.equal(b.queue.length, 2, "the meeting has been called");
+  assert.ok(b.gathering && members.some((id) => b.agents.get(id).walking), "and the group is on its way");
+  let satTogether = false, ticks = 0;
+  while (b.queue.length === 2 && ticks++ < 4000) { b.tick(0.05); if (members.every((id) => b.poseOf(b.agents.get(id)) === "table")) satTogether = true; }
+  assert.ok(satTogether, "everyone was at the table before the meeting was allowed to end");
+  assert.equal(b.queue.length, 1, "then the meeting ends");
+  assert.equal(b.agents.get("A063").away, null);
+  // a meeting that cannot gather in time is not waited for for ever
+  const c = new Building(canvasStub(1150), { animations: true });
+  c.setData(f, null);
+  c.gathering = { ids: ["A001"], until: c.clock + 1, sit: 0.5, at: null };
+  c.agents.get("A001").walking = true;
+  assert.equal(c.gathered(), false); c.clock += 2; assert.equal(c.gathered(), true);
+  b.destroy(); c.destroy();
+});

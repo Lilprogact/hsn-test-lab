@@ -288,7 +288,7 @@ export function paintDynamic(c, b, view = null) {
     } else if (room.kind === "discussion") {
       const busy = [...b.agents.values()].some((a) => a.away?.room === room);
       if (!busy) R(c, room.x + 1, room.y + 1, room.w - 2, room.h - 2, `rgba(2,6,5,${dim.toFixed(3)})`);
-      else if (!room.small) { c.fillStyle = GOOD; c.font = `600 8px ${FONT}`; c.fillText("in session", room.x + room.w / 2 - 17, room.y + HEAD_H + 17); }
+      else if (!room.small) { c.fillStyle = GOOD; c.font = `600 7.5px ${FONT}`; const sw = c.measureText("in session").width; c.fillText("in session", room.x + room.w / 2 - sw / 2, room.y + HEAD_H + 16.5); }
     } else if (room.kind === "audit") paintAudit(c, b, room, t);
     else if (room.kind === "ceo") paintCeo(c, b, room, wall);
     else if (room.kind === "engine") paintEngine(c, b, room, wall);
@@ -451,9 +451,12 @@ function paintBubble(c, b, a, view, t) {
     const text = chip.text.length > 26 ? chip.text.slice(0, 25) + "…" : chip.text, tw = c.measureText(text).width + 9, age = b.clock - chip.born;
     const seat = b.groups.get(a.group)?.seats.indexOf(a.id) ?? 0;
     const bx = clamp(a.x - tw / 2, b.liftW + 2, b.W - tw - 2), by = a.y - (seated ? 37 + (seat % 2) * 12 : 38 + (seat % 3) * 13) - Math.min(9, age * 14);
+    const pop = b.animations ? clamp(age / 0.16, 0, 1) : 1, k = 0.55 + 0.45 * pop * (2 - pop);                               // it pops up, then settles
+    c.save(); c.translate(bx + tw / 2, by + 6.5); c.scale(k, k); c.translate(-(bx + tw / 2), -(by + 6.5));
     c.fillStyle = "rgba(6,19,12,.55)"; roundRect(c, bx + 1, by + 1.5, tw, 13, 4); c.fill();
     c.fillStyle = chip.color; roundRect(c, bx, by, tw, 13, 4); c.fill();
     c.fillStyle = INK; c.fillText(text, bx + 4.5, by + 9.6);
+    c.restore();
     return;
   }
   if (!a.status || a.status === "idle" || (a.away && a.walking)) return;

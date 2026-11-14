@@ -128,6 +128,15 @@ function firm() {
     recent_events: [{ kind: "level_up" }, { kind: "tested" }, { kind: "level_up" }], budget: { firm_spent_usd: 12.5, firm_budget_usd: 60, minutes_budget: 1200 } };
 }
 
+test("when the login works but is the trading password, Start says exactly that", () => {
+  const setup = { secrets: { forexcom_mt5_login: true }, logins_checked: { forexcom: { state: "failed", reason: "not_read_only", read_only: false, demo: true } } };
+  const r = readiness({ coverage: { symbols: { XAUUSD: { months: 0 } } } }, setup, { paused: true });
+  assert.equal(r.ok, false);
+  assert.equal(r.why, "Waiting for the price history: the FOREX.com login works and it is a demo account, but the saved password is the trading password and the engine only accepts a read-only (investor) one. See Setup.");
+  setup.logins_checked.forexcom.demo = false;
+  assert.doesNotMatch(readiness({ coverage: null }, setup, {}).why, /demo account/);
+});
+
 test("the scoreboard ranks by pips and by win rate, money first, with a minimum number of trades", () => {
   const sb = scoreboard(firm());
   assert.deepEqual(sb.pips, { id: "A002", name: "Bo Two", pips: 2100, win: 41, sets: 120 }, "a losing idea's pips never lead the board");
