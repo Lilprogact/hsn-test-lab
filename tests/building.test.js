@@ -141,7 +141,7 @@ test("result chips speak in pips and win rate, the Engine's search is marked, an
 
 // ── the 2D world: looks, routes, the lift, things in flight, the camera ─────────────────────────────────────────────
 const { lookOf, hash } = await import("../js/sprites.js");
-const { worldFrom } = await import("../js/building.js");
+const { worldFrom, coverageWorld } = await import("../js/building.js");
 const { skyAt } = await import("../js/scene.js");
 
 function startOf(f) {
@@ -163,6 +163,22 @@ test("every agent has a look of its own that never changes, and a new Analyst in
   b.apply({ at: "r", kind: "rotation", agent: "A050", new_name: "Tessa Brightwater" }, true);
   assert.notDeepEqual(b.agents.get("A050").look, before);
   assert.equal(b.agents.get("A050").name, "Tessa Brightwater");
+  b.destroy();
+});
+
+test("price history that arrived since the firm's last shift shows in the building", () => {
+  // the firm's own file only learns of new price history at its next shift; the Data check's coverage file knows at once
+  assert.deepEqual(coverageWorld(null), {});
+  assert.deepEqual(coverageWorld({ symbols: { XAUUSD: { months: 0 } } }), {}, "nothing on file: the firm's own file still speaks");
+  const now = coverageWorld({ symbols: { XAUUSD: { months: 14, last_bar: "2026-11-13T21:59:00Z" }, NAS100: { months: 14, last_bar: "2026-11-13T21:59:00Z" }, GBPUSD: { months: 0 } } });
+  assert.deepEqual(now, { hasData: true, data: [{ label: "Gold", months: 14, to: "2026-11-13" }, { label: "Nasdaq 100", months: 14, to: "2026-11-13" }], dataTo: "2026-11-13" });
+  const b = new Building(canvasStub(1150), { animations: true });
+  b.setWorld(now);
+  b.setData({ ...firm(), paused: true, data_coverage: { symbols: {} } }, null);          // a firm that has not had a shift since the download
+  assert.equal(b.world.hasData, true);
+  assert.equal(b.world.paused, true, "everything else still comes from the firm's own file");
+  assert.match(b.tour().map((s) => s.label).join(" | "), /Price history on file: Gold 14 months, Nasdaq 100 14 months\./);
+  assert.doesNotMatch(b.tour().map((s) => s.label).join(" | "), /waiting for price history|none yet/);
   b.destroy();
 });
 

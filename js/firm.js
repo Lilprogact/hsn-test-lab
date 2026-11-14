@@ -7,9 +7,16 @@ import * as gh from "./github.js";
 import { state, startRun, liveText } from "./app.js";
 import { ukDateTime } from "./clock.js";
 import { h, card, stat, table, badge, field, select, input, money, num, pct, signed, openModal, closeModal, mdLite } from "./ui.js";
-import { Building, LEVEL_COLORS, BAR_COLORS, isRunning } from "./building.js";
+import { Building, LEVEL_COLORS, BAR_COLORS, isRunning, coverageWorld } from "./building.js";
 import { PACES, nextShift, readiness, scoreboard, eventLine, tokenHelp, shiftPlan, shiftPlanWords, minutesUsedThisMonth, minutesNote } from "./firmlogic.js";
 import { ChallengeReplay } from "./replay.js";
+
+/** Gold's price history as the engine holds it now: the Data check's file, or failing that the firm's own (which only
+ *  learns of new history at its next shift). */
+function goldOnFile(firm) {
+  const now = state.coverage?.symbols?.XAUUSD;
+  return now && now.months > 0 ? now : firm?.data_coverage?.symbols?.XAUUSD || null;
+}
 
 const LEVELS = { 1: "Analyst", 2: "Associate", 3: "Vice President", 4: "Director", 5: "Managing Director" };
 const CODE_ROOM = { original: "your indicator as the Engine runs it", original_pine: "your indicator's Pine code", chart_maths: "the chart maths it is built from", waves: "your Waves rules",
@@ -240,6 +247,7 @@ export class FirmView {
     requestAnimationFrame(() => {
       this.building = new Building(canvas, { animations: state.animations, onAgent: (id) => this.openAgent(id), onRoom: (room) => this.openRoom(room), describe: (e) => this.eventText(e) });
       this.building.attachStage(stage);
+      this.building.setWorld(coverageWorld(state.coverage));       // price history that arrived since the firm's last shift counts too
       this.paintCamBar();
       this.building.setStars(scoreboard(f).stars);
       this.building.setData(f, this.live);
@@ -400,7 +408,7 @@ export class FirmView {
         stat("GitHub minutes this month", num(minutesUsedThisMonth(state.minutes), 0), `of the firm's limit of ${num(budget.minutes_budget, 0)} (2,000 are free)${state.minutes?.checked_at ? " · counted " + ukDateTime(state.minutes.checked_at) + " UK" : ""}`, minutesUsedThisMonth(state.minutes) >= 0.8 * (budget.minutes_budget || 1200) ? "warnc" : ""),
         lc.max_seconds && lc.seconds != null ? stat("Last shift's time", `${num(lc.seconds / 60, 0)} min`, `it was given ${num(lc.max_seconds / 60, 0)} minutes to work (an even share of the minutes left this month)`) : null,
         stat("Last shift", `${lc.thinking_turns ?? 0} turns`, `${lc.variants_tested ?? 0} variants · ${lc.ai_calls ?? 0} AI calls · $${num(lc.ai_cost_usd, 2)}${lc.budget?.cost_per_turn_usd ? ` · $${lc.budget.cost_per_turn_usd} a turn${lc.budget.cost_per_turn_measured ? " (measured)" : " (estimate)"}` : ""}`),
-        stat("Challenge attempts", f.attempts?.total ?? 0, "all counted for the random bar"), stat("Data", f.data_coverage?.symbols?.XAUUSD?.months ? `${f.data_coverage.symbols.XAUUSD.months} months gold` : "—", f.data_coverage?.symbols?.XAUUSD?.last_bar?.slice(0, 10) || "")),
+        stat("Challenge attempts", f.attempts?.total ?? 0, "all counted for the random bar"), stat("Data", goldOnFile(f)?.months ? `${goldOnFile(f).months} months gold` : "—", goldOnFile(f)?.last_bar?.slice(0, 10) || "")),
       h("p", { class: "muted small" }, "Paper desk: parked (your decision of 8 Nov 2026). Floor 5's challenge needs 20 trading days of live paper testing, so nobody can pass floor 5 until it returns."),
       h("h3", {}, "Leaderboard (ranked by Month Score, which is money first; pips and win rate beside it)"), lb,
       h("h3", {}, "Ideas Board (proven from floor 3 up, with verified report cards)"), ideas.length ? h("div", { class: "list" }, ...ideas) : h("p", { class: "muted" }, "Nothing has passed floor 3 yet."),

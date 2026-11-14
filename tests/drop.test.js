@@ -422,6 +422,11 @@ test("after a check: the steps for the investor password, or that the download i
   assert.deepEqual(next.items, []);
   next = whatNext({ forexcom: { state: "ok" }, anthropic: { state: "failed" }, feed: { state: "ok" } });
   assert.deepEqual(next.items, ["HSN Capital also needs the Anthropic key to work before it can start."]);
+  // once the history is in the engine the page says so, and stops saying it is downloading
+  next = whatNext({ forexcom: { state: "ok" }, anthropic: { state: "ok" }, feed: { state: "failed" } }, { goldMonths: 14 });
+  assert.equal(next.kind, "ready");
+  assert.equal(next.title, "The FOREX.com login works, and the price history is in: 14 months of gold. The Start button is on the HSN Capital page.");
+  assert.equal(whatNext({ forexcom: { state: "failed", reason: "not_read_only" } }, { goldMonths: 14 }).kind, "investor");
 
   // a demo account's own password, allowed by the owner for a demo: it works, and it is never called read-only
   const demo = resultLine(doc, { checked_at: "2026-11-14T10:08:00Z", request_id: "r1", state: "ok", reason: "ok_demo_trading_password", demo: true, read_only: false },

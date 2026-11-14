@@ -311,8 +311,9 @@ export const INVESTOR_STEPS = [
  * nothing to add to the one line, or {kind, title, items}:
  *   investor      the login works but its password could trade: the steps to replace it with the investor password
  *   downloading   the FOREX.com login works: the price history is on its way (and what, if anything, is still missing)
+ *   ready         the FOREX.com login works and gold's price history is in the engine (`goldMonths` of it)
  */
-export function whatNext(parts = {}) {
+export function whatNext(parts = {}, { goldMonths = 0 } = {}) {
   const fx = parts.forexcom || {}, ai = parts.anthropic || {}, feed = parts.feed || {};
   if (fx.state === "failed" && fx.reason === "not_read_only") {
     return { kind: "investor", title: "The login itself works. The saved password is the one that can trade; the Test Lab only takes the one that can look. To swap it (about five minutes):", items: INVESTOR_STEPS,
@@ -323,6 +324,9 @@ export function whatNext(parts = {}) {
   if (ai.state !== "ok") items.push("HSN Capital also needs the Anthropic key to work before it can start.");
   if (feed.state !== "ok") items.push("The feed is optional: it only adds the VPS's recorded alerts and research. Backtests and HSN Capital work without it.");
   const all = !items.length;
+  if (goldMonths > 0) {
+    return { kind: "ready", title: `${all ? "All three work" : "The FOREX.com login works"}, and the price history is in: ${goldMonths} month${goldMonths === 1 ? "" : "s"} of gold. The Start button is on the HSN Capital page.`, items };
+  }
   return { kind: "downloading", title: `${all ? "All three work" : "The FOREX.com login works"}. The engine is now downloading the FOREX.com price history (it can take up to an hour the first time; Settings shows it arrive). When it has arrived, the Start button on the HSN Capital page unlocks.`, items };
 }
 

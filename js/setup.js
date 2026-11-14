@@ -381,7 +381,9 @@ export class SetupView {
     const r = resultLine(doc, login, pending ? { requestId: pending.request, startedAt: pending.requestedAt } : {});
     this.lineEl.textContent = r.line;
     this.lineMeta.textContent = doc && (!pending || doc.request_id === pending.request) ? `Checked ${ukDateTime(doc.updated_at)}${login?.checked_at ? ` · FOREX.com ${ukDateTime(login.checked_at)}` : ""}` : "";
-    const next = whatNext(r.parts || {});
+    // gold's months on file: the Data check's own file, or the start-up checklist's copy of it
+    const goldMonths = Math.max(state.coverage?.symbols?.XAUUSD?.months || 0, this.remote.setup?.data?.XAUUSD?.months || 0);
+    const next = whatNext(r.parts || {}, { goldMonths });
     this.nextEl.replaceChildren(!next ? ""
       : next.kind === "investor" ? h("div", { class: "notice warn drop-next" }, h("strong", {}, next.title), h("ol", {}, ...next.items.map((s) => h("li", {}, s))), next.after ? h("p", {}, next.after) : null)
         : h("div", {}, h("p", { class: "good" }, next.title), ...next.items.map((s) => h("p", { class: "muted" }, s))));

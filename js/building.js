@@ -42,9 +42,23 @@ const fmt = (v) => (v === null || v === undefined || Number.isNaN(+v) ? "—" : 
 const SYMBOL_WORDS = { XAUUSD: "Gold", NAS100: "Nasdaq 100", GBPUSD: "GBP/USD" };
 
 /** What the machines in the basement show, read from the firm's own file (firm/firm.json). */
+/** What the price-history room shows, from a coverage file ({symbols: {XAUUSD: {months, last_bar}}}). */
+function dataOnFile(coverage) {
+  return Object.entries(coverage?.symbols || {}).filter(([, v]) => v && v.months > 0).map(([k, v]) => ({ label: SYMBOL_WORDS[k] || k, months: v.months, to: String(v.last_bar || "").slice(0, 10) }));
+}
+
+/**
+ * The price history the engine holds now, for setWorld(). The firm's own file only learns of new price history at
+ * its next shift, so between a download and that shift the Data check's coverage file is the one that is true.
+ * Returns {} when that file shows nothing, so the firm's own file still speaks.
+ */
+export function coverageWorld(coverage) {
+  const data = dataOnFile(coverage);
+  return data.length ? { hasData: true, data, dataTo: data.map((d) => d.to).sort().pop() || "" } : {};
+}
+
 export function worldFrom(firm) {
-  const cov = firm?.data_coverage?.symbols || {};
-  const data = Object.entries(cov).filter(([, v]) => v && v.months > 0).map(([k, v]) => ({ label: SYMBOL_WORDS[k] || k, months: v.months, to: String(v.last_bar || "").slice(0, 10) }));
+  const data = dataOnFile(firm?.data_coverage);
   const st = firm?.strategies || {};
   return { paused: !!firm?.paused, hasData: data.length > 0, data, dataTo: data.map((d) => d.to).sort().pop() || "", dataNote: "none yet",
     codeSources: (firm?.code_room || []).length || 7, strategies: { active: (st.active || []).length, waiting: st.waiting ?? 0, rejected: st.rejected ?? 0 },
