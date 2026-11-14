@@ -315,7 +315,8 @@ export const INVESTOR_STEPS = [
 export function whatNext(parts = {}) {
   const fx = parts.forexcom || {}, ai = parts.anthropic || {}, feed = parts.feed || {};
   if (fx.state === "failed" && fx.reason === "not_read_only") {
-    return { kind: "investor", title: "The login itself works. The saved password is the one that can trade; the Test Lab only takes the one that can look. To swap it (about five minutes):", items: INVESTOR_STEPS };
+    return { kind: "investor", title: "The login itself works. The saved password is the one that can trade; the Test Lab only takes the one that can look. To swap it (about five minutes):", items: INVESTOR_STEPS,
+      after: "If you opened this demo account inside the MetaTrader 5 app, the screen that gave you the Login and the Password also had a line called Investor. That Investor line is the password for this box, and nothing needs changing in the app." };
   }
   if (fx.state !== "ok") return null;
   const items = [];
