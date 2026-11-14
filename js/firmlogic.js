@@ -117,9 +117,13 @@ export function scoreboard(firm) {
     .sort((a, b) => (b.best_win ?? -1) - (a.best_win ?? -1) || (b.best_pips ?? 0) - (a.best_pips ?? 0) || a.id.localeCompare(b.id))[0] || null;
   const events = firm?.recent_events || [];
   const card = (a) => a && { id: a.id, name: a.name, pips: a.best_pips, win: a.best_win, sets: a.best_sets };
+  // The firm's records, from every idea ever tested, when the engine publishes them: an agent's own best idea is chosen
+  // on money and can move to one with a lower win rate, which made "best win rate" fall after a refresh (14 Nov 2026).
+  const rec = firm?.records || {};
+  const held = (r) => r && { id: r.agent, name: r.name, pips: r.pips, win: r.win_rate_pct, sets: r.sets, idea: r.idea, record: true };
   return {
-    pips: card(byPips), win: card(byWin), minTrades: MIN_TRADES_FOR_WIN_RANK,
-    stars: { pips: byPips?.id || null, win: byWin?.id || null },
+    pips: held(rec.top_pips) || card(byPips), win: held(rec.top_win) || card(byWin), minTrades: rec.min_trades || MIN_TRADES_FOR_WIN_RANK,
+    stars: { pips: rec.top_pips?.agent || byPips?.id || null, win: rec.top_win?.agent || byWin?.id || null },
     ideas: firm?.library?.ideas ?? 0, verified: firm?.library?.verified ?? 0,
     strategies: (firm?.strategies?.active || []).length, waiting: firm?.strategies?.waiting ?? 0,
     agentsWithCode: agents.filter((a) => a.own_code).length,

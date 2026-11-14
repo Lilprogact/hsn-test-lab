@@ -193,3 +193,13 @@ test("a look at the code or a question to the Engine is said in plain words", ()
   assert.equal(lookWords({ tool: "something_new", what: "odd" }).text, "looks something up (odd)", "an unknown look is still said, never dropped");
   assert.deepEqual(Object.keys(CODE_WORDS), ["original", "original_pine", "chart_maths", "waves", "rules_engine", "price_model", "challenges"], "the engine's code room, name for name");
 });
+
+test("the scoreboard shows the firm's records when the engine publishes them, so a best never goes down", () => {
+  const firm = { agents: { A001: { name: "Ana", best_month_score: 300, best_pips: 9000, best_win: 41, best_sets: 120 }, A002: { name: "Bo", best_month_score: 50, best_pips: 7000, best_win: 55, best_sets: 40 } } };
+  const before = scoreboard(firm);
+  assert.equal(before.win.win, 55);                       // without records: the best among the agents' current best ideas
+  const withRecords = scoreboard({ ...firm, records: { min_trades: 30, top_win: { idea: "I00283", agent: "A001", name: "Ana", pips: 5000, win_rate_pct: 65.3, sets: 49 }, top_pips: { idea: "I00704", agent: "A009", name: "Wyn", pips: 25032.4, win_rate_pct: 47.4, sets: 114 } } });
+  assert.deepEqual(withRecords.win, { id: "A001", name: "Ana", pips: 5000, win: 65.3, sets: 49, idea: "I00283", record: true });
+  assert.equal(withRecords.pips.pips, 25032.4);
+  assert.deepEqual(withRecords.stars, { pips: "A009", win: "A001" });
+});
