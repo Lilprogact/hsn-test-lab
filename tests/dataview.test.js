@@ -136,3 +136,11 @@ test("TRIAL MODE says what is real and what is still unproven, and ends only whe
   assert.match(halfway.reason, /indicator is proven the same.*not identical.*waiting for your decision/);
   assert.deepEqual(trialReason({ exports: [{ file: "a.csv" }], passes: true, mt5_passes: true }), { trial: false, reason: "" });
 });
+
+test("once the price gap is accepted the badge says so, and TRIAL MODE ends", () => {
+  const m = { ...matched, mt5_passes: true, prices_accepted: true, headline: "The Lab's copy of the indicator is proven the same as TradingView's, and its FOREX.com prices are within the gap Hassan accepted on 14 Nov 2026." };
+  const v = matchView(m);
+  assert.deepEqual(v.badges, [{ text: "indicator: the same as TradingView", kind: "good" }, { text: "prices: within the gap you accepted", kind: "good" }]);
+  assert.equal(v.headline, m.headline);
+  assert.deepEqual(trialReason(m), { trial: false, reason: "" });
+});

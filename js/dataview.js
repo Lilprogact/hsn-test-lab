@@ -79,7 +79,7 @@ export function matchView(m) {
   if (!files.length) return { kind: "waiting", headline: m.headline || "No TradingView files yet, so nothing has been compared with TradingView.", steps: TV_STEPS, at: m.checked_at };
   const badges = [
     m.passes ? { text: "indicator: the same as TradingView", kind: "good" } : { text: "indicator: not proven yet", kind: "warn" },
-    m.mt5_passes ? { text: "prices: the same as TradingView", kind: "good" } : { text: "prices: not identical", kind: "warn" },
+    m.mt5_passes ? { text: m.prices_accepted ? "prices: within the gap you accepted" : "prices: the same as TradingView", kind: "good" } : { text: "prices: not identical", kind: "warn" },
   ];
   const headline = m.headline || (m.passes ? "The Lab's copy of the indicator matches TradingView." : m.reason || "The Lab's copy of the indicator is not yet proven the same as TradingView's.");
   return {
