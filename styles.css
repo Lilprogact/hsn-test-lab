@@ -270,3 +270,9 @@ canvas.stage { display: block; width: 100%; touch-action: manipulation; }
 .cam-bar .chip { padding: 5px 10px; font-size: .8rem; }
 .stage-wrap:fullscreen { border: 0; border-radius: 0; display: flex; align-items: center; background: #05090a; }
 .stage-wrap:-webkit-full-screen { border: 0; border-radius: 0; display: flex; align-items: center; background: #05090a; }
+
+/* the TradingView check: one block a file, its results as plain lines */
+.tv-file { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; margin: 10px 0; }
+.tv-file.problem { border-color: var(--amber); }
+.tv-file ul { margin: 8px 0 0; padding-left: 20px; }
+.tv-file li { margin: 5px 0; }

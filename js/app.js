@@ -1,5 +1,6 @@
 // HSN Test Lab — app shell: lock, token, navigation, shared status (clock, trial mode), run dispatch and polling.
 import * as vault from "./vault.js";
+import { trialReason } from "./dataview.js";
 import * as gh from "./github.js";
 import { h, notice, openModal, closeModal } from "./ui.js";
 import { MarketHours, renderClockBar } from "./clock.js";
@@ -126,10 +127,7 @@ export async function loadShared() {
 }
 
 export function trialMode() {
-  if (!state.match) return { trial: true, reason: "No TradingView match check has been run yet." };
-  if (!state.match.passes) return { trial: true, reason: state.match.reason || "The Python port does not yet match the TradingView exports." };
-  if (!state.match.mt5_passes) return { trial: true, reason: "MT5 history has not yet been shown to agree with the TradingView exports (results use the exports)." };
-  return { trial: false, reason: "" };
+  return trialReason(state.match);
 }
 
 function renderTrialNotice() {

@@ -5,7 +5,7 @@ import * as gh from "./github.js";
 import { state, startSettingsWorkflow, loadShared, switchView } from "./app.js";
 import { ukDateTime } from "./clock.js";
 import { h, card, stat, table, badge, field, select, input, num, pct, money } from "./ui.js";
-import { exportView } from "./dataview.js";
+import { exportView, matchView, TV_STEPS } from "./dataview.js";
 
 function permissionWords(can) {
   const missing = [can.contents === false ? "Contents (Read-only), which lets the site read results" : null, can.actions === false ? "Actions (Read and write), which lets the site start runs" : null].filter(Boolean);
@@ -82,16 +82,10 @@ export class SettingsView {
     const covRows = Object.entries(cov).map(([s, c]) => ({ Symbol: s, Kind: c.kind || "—", Months: c.months || 0, Bars: num(c.bars, 0), From: (c.first_bar || "").slice(0, 10), To: (c.last_bar || "").slice(0, 10), Sources: (c.sources || []).join(", "), "Gaps > 1 min": c.gaps_over_1_minute ?? "—" }));
     const m = state.match;
     const dataCard = card("Data", table(["Symbol", "Kind", "Months", "Bars", "From", "To", "Sources", "Gaps > 1 min"], covRows, { numeric: ["Months", "Bars", "Gaps > 1 min"] }),
-      h("h3", {}, "TradingView match check"), m ? h("div", {}, h("p", {}, m.passes ? badge("port matches the exports", "good") : badge("not matched yet", "warn"), " ", m.mt5_passes ? badge("MT5 agrees with TradingView", "good") : badge("MT5 agreement not shown yet", "warn"), h("span", { class: "muted" }, ` · checked ${ukDateTime(m.checked_at)}`)), m.reason ? h("p", { class: "warnc" }, m.reason) : null,
-        table(["File", "Symbol", "TF", "Bars", "Signal match after warm-up", "MT5 overlap", "Error"], (m.exports || []).map((e) => ({ File: e.file, Symbol: e.symbol, TF: e.timeframe, Bars: e.bars, "Signal match after warm-up": e.indicator ? pct(e.indicator.signal_match_rate_after_warmup, 2) : "—", "MT5 overlap": e.mt5_agreement?.overlap ? `${e.mt5_agreement.bars_in_both} bars · ${e.mt5_agreement.passes ? "agree" : "differ"}` : "none", Error: e.error || "" })))) : h("p", { class: "muted" }, "No check yet. Upload your TradingView exports to hsn-test-lab-engine/data/exports/ and run the Data check workflow."),
+      h("h3", {}, "TradingView check"), this.matchBox(m),
       h("div", { class: "row" },
-        h("button", { class: "secondary", onclick: async () => { try { await gh.dispatch(state.token, state.owner, gh.DATA_WORKFLOW, {}); alert("Data check requested. The match report appears here when it finishes (about 2 minutes)."); } catch (e) { alert(e.message); } } }, "Run the data check now"),
-        h("button", { class: "secondary", onclick: async () => {
-          if (!confirm("Store the TradingView exports in data/exports/ as TRIAL-MODE price data? Runs can then start before the VPS feed exists. Every result made from them is labelled TRIAL MODE until MT5 data has been shown to agree.")) return;
-          try { await gh.dispatch(state.token, state.owner, gh.DATA_WORKFLOW, { import_tv: "yes" }); alert("Import requested. Reload this page in a few minutes: the Data table then shows the stored bars."); } catch (e) { alert(e.message); }
-        } }, "Use the exports for trial mode")),
-      h("p", { class: "help" }, "Trial mode uses the finest TradingView export per symbol (for example 5M bars, no spreads) as the price source. It is for checking the tool, not for ranking strategies: 1-minute FOREX.com data with real spreads from the VPS replaces it, and the site stops saying TRIAL MODE only when the two agree."),
-      h("details", {}, h("summary", {}, "How to add data"), h("ol", {}, h("li", {}, "TradingView (first, to prove the match): chart FOREXCOM:XAUUSD with the indicator on → ⋯ → Export chart data → ISO time, time zone UTC. Do 5M and 1H at least (every timeframe is better), and the FOREX.com Nasdaq symbol. Upload the CSVs to hsn-test-lab-engine/data/exports/ (Add file → Upload files), then press Run the data check now."), h("li", {}, "To start testing before the VPS feed exists, press Use the exports for trial mode."), h("li", {}, "VPS data job (main source, 1-minute history with spreads): see vps/README.md and the message for your VPS agent in vps/VPS_AGENT_MESSAGE.md."), h("li", {}, "GBP/USD: the data job exports it; until then set a fixed rate above (labelled on every result)."))));
+        h("button", { class: "secondary", onclick: async () => { try { await gh.dispatch(state.token, state.owner, gh.DATA_WORKFLOW, {}); alert("Data check requested. The result appears here when it finishes (about 5 minutes)."); } catch (e) { alert(e.message); } } }, "Run the data check now")),
+      h("p", { class: "help" }, "This holds the Lab against TradingView in three ways: the Lab's copy of your indicator against TradingView's own values, the Lab's FOREX.com prices against TradingView's candles, and the Buy and Sell marks on the Lab's prices against the marks on your chart. The site says TRIAL MODE until the indicator is proven the same and the prices have been accepted."));
 
     const anim = h("label", { class: "chip" }, h("input", { type: "checkbox", checked: state.animations || null, onchange: (e) => { state.animations = e.target.checked; localStorage.setItem("hsn.animations", e.target.checked ? "on" : "off"); } }), "Animations on");
     const misc = card("Display", anim, h("p", { class: "help" }, "Turn animations off on a slow connection; the building and replay then draw still frames."),
@@ -195,6 +189,21 @@ export class SettingsView {
         table(["Symbol", "Bars read", "Months", "From", "To", "Note"], rows, { numeric: ["Bars read", "Months"] }),
         h("p", { class: "help" }, `Months is how many months of 1-minute bars are stored for that symbol; From and To are its first and last stored bar (UTC).${v.askedBackTo ? ` The download was asked to reach back to ${v.askedBackTo}.` : ""} A month is only stored when every hour MetaTrader's own hourly bars show for it is there.`));
     } catch (e) { this.mt5El.replaceChildren(h("p", { class: "error" }, e.message)); }
+  }
+
+  /** The TradingView check in plain words: what was compared and what came out, or how to make the files. */
+  matchBox(m) {
+    const v = matchView(m);
+    const when = v.at ? h("span", { class: "muted" }, ` · checked ${ukDateTime(v.at)}`) : null;
+    if (v.kind !== "report") {
+      return h("div", {}, h("p", {}, badge("waiting for your TradingView files", "warn"), when), h("p", {}, v.headline),
+        h("p", { class: "help" }, "TradingView gives chart data only to a signed-in account that downloads it, so this needs five minutes from you. Best done while the market is shut."),
+        h("ol", { class: "steps" }, v.steps.map((s) => h("li", {}, s))));
+    }
+    return h("div", {}, h("p", {}, v.badges.flatMap((b) => [badge(b.text, b.kind), " "]), when), h("p", {}, v.headline),
+      v.files.map((f) => h("div", { class: `tv-file${f.problem ? " problem" : ""}` }, h("strong", {}, f.title), h("div", { class: "muted small" }, f.name),
+        h("ul", {}, f.lines.map((l) => h("li", {}, l))))),
+      h("details", {}, h("summary", {}, "How to add more files"), h("ol", { class: "steps" }, TV_STEPS.map((s) => h("li", {}, s)))));
   }
 
   usageTable() { this.usageEl = h("div"); return this.usageEl; }
