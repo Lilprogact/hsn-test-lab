@@ -262,3 +262,7 @@ ol.steps li { margin: 6px 0; }
 .plan-line { margin: 2px 0 8px; padding: 8px 10px; border-left: 3px solid var(--green2); border-radius: 0 10px 10px 0; background: var(--bg2); color: var(--text); }
 .stage-wrap { border: 1px solid var(--line2); border-radius: 12px; overflow: hidden; background: #05090a; line-height: 0; }
 canvas.stage { display: block; width: 100%; touch-action: manipulation; }
+.cam-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0 2px; }
+.cam-bar .chip { padding: 5px 10px; font-size: .8rem; }
+.stage-wrap:fullscreen { border: 0; border-radius: 0; display: flex; align-items: center; background: #05090a; }
+.stage-wrap:-webkit-full-screen { border: 0; border-radius: 0; display: flex; align-items: center; background: #05090a; }

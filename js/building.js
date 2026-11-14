@@ -174,7 +174,10 @@ export class Building {
       Object.assign(m, { name, look: lookOf(`M${f}`, name, { suit: true }), x: r.x + r.w - 14, y: r.y + LABEL_H + 1, pose: "stand" });
       this.staff.push(m);
     }
-    if (this.firm) { const d = this.auditSeat(); this.staff.push({ id: "AUD", floor: 4, name: "Audit desk", look: lookOf("AUD", "audit", { suit: true }), x: d.x, y: d.y, pose: "sit", phase: 2.2 }); }
+    if (this.firm) {
+      const d = this.auditSeat(); this.staff.push({ id: "AUD", floor: 4, name: "Audit desk", look: lookOf("AUD", "audit", { suit: true }), x: d.x, y: d.y, pose: "sit", phase: 2.2 });
+      const c = this.ceoDesk(); this.staff.push({ id: "CEO", floor: 0, name: "you", tag: "you", look: lookOf("CEO", "the one watching", { suit: true }), x: c.x, y: c.y, pose: "sit", phase: 0.7 });      // whoever is looking at this page
+    }
   }
 
   liftY(floor) { return this.doorOf(floor).y - LIFT_CAR_H; }
@@ -201,7 +204,7 @@ export class Building {
     return { x: t.x0 + 7 + col * 14, y: t.y - 8 - row * 9, lane: room.lane, floor: room.floor };
   }
   auditSeat() { const r = this.byId?.AUDIT; return r ? { x: r.x + r.w - 26, y: r.y + r.h - 20 } : { x: 0, y: 0 }; }
-  ceoDesk() { const r = this.byId?.CEO; return r ? { x: r.x + Math.max(34, r.w * 0.24), y: r.y + r.h - 20 } : { x: 0, y: 0 }; }
+  ceoDesk() { const r = this.byId?.CEO; return r ? { x: r.x + (this.phone ? Math.max(30, r.w * 0.24) : r.w * 0.38), y: r.y + r.h - 20 } : { x: 0, y: 0 }; }
   machine() { const r = this.byId?.ENGINE; return r ? { x: r.x + 8, y: r.y + 21, w: r.w - 16, h: 40 } : { x: 0, y: 0, w: 60, h: 40 }; }
   /** Where things fly to and from: the Engine's core, the sandbox, the Audit desk, the price history. */
   port(name) {
@@ -630,17 +633,31 @@ export class Building {
   }
   resizeStage() {
     if (!this.stage) return;
-    const w = Math.max(280, Math.floor(this.stage.parentElement?.getBoundingClientRect().width || 800));
-    this.sw = w; this.sh = clamp(Math.round(w * 0.5), 230, 450);
+    const box = this.stage.parentElement?.getBoundingClientRect() || { width: 800, height: 0 };
+    const w = Math.max(280, Math.floor(box.width || 800)), full = typeof document !== "undefined" && (document.fullscreenElement || document.webkitFullscreenElement) === this.stage.parentElement;
+    this.sw = w; this.sh = full ? Math.max(230, Math.floor(window.innerHeight || box.height || 450)) : clamp(Math.round(w * 0.5), 230, 450);
     const dpr = Math.min(3, window.devicePixelRatio || 1);
     this.sdpr = dpr; this.stage.width = Math.round(this.sw * dpr); this.stage.height = Math.round(this.sh * dpr); this.stage.style.height = `${this.sh}px`;
     if (!this.cam) this.cam = { x: this.W / 2, y: this.H / 2, s: 1.4 };
   }
 
+  /** Hold the camera on one place ("top", a floor "5".."1", "basement") until follow() lets it go again. */
+  hold(key) { this.manual = String(key); this.shot = null; this.camMoving = true; }
+  follow() { this.manual = null; this.shot = null; this.camMoving = true; }
+  /** The place a held camera looks at, and what to call it. */
+  heldPlace() {
+    const k = this.manual, L = this.liftW;
+    if (k === "top") return { rect: { x: L, y: 0, w: this.W - L, h: this.skyH + this.hTop }, name: "Top floor: the Audit desk and the CEO's office" };
+    if (k === "basement") return { rect: { x: 0, y: this.groundY - 4, w: this.W, h: this.hBase + GROUND_H + 8 }, name: "The basement: the Engine, the price history, the code room and the sandbox" };
+    const f = +k; if (!this.floorRect[f]) return null;
+    const r = this.floorRect[f];
+    return { rect: { x: 0, y: r.y, w: this.W, h: r.h }, name: `Floor ${f} · ${LEVEL_NAMES[f]}` };
+  }
+
   /** The camera's view of a world rectangle: its middle, and the zoom that fits it above the caption. */
-  frame(rect, pad = 16) {
+  frame(rect, pad = 16, min = 1.15) {
     const sw = this.sw || 800, sh = (this.sh || 400) - 34;
-    const s = clamp(Math.min(sw / (rect.w + pad * 2), sh / (rect.h + pad * 2)), 1.15, 3.4);
+    const s = clamp(Math.min(sw / (rect.w + pad * 2), sh / (rect.h + pad * 2)), min, 3.4);
     const vw = sw / s, vh = sh / s;
     return { x: vw >= this.W ? this.W / 2 : clamp(rect.x + rect.w / 2, vw / 2, this.W - vw / 2), y: vh >= this.H ? this.H / 2 : clamp(rect.y + rect.h / 2, vh / 2, this.H - vh / 2), s };
   }
@@ -665,6 +682,7 @@ export class Building {
   point(e) {
     this.lastEventAt = this.wall;
     if (!this.stage) return;
+    if (this.manual) { try { this.lastLine = this.describe?.(e) || ""; } catch { this.lastLine = ""; } return; }       // the camera is being held: it stays, and says what is happening
     const [pri, hold] = SHOT[e.kind] || [1, 2], cur = this.shot;
     const where = this.placeOf(e); if (!where || (!where.rect && !where.follow)) return;
     let label = "";
@@ -703,6 +721,18 @@ export class Building {
     if (riding && (!this.shot || !this.shot.real || this.wall >= this.shot.until)) {
       const r = this.rides[0];                                                                     // people are on their way to the lift and nothing else is showing: go with them
       this.shot = { follow: riding.id, rect: null, pri: 2, until: this.wall + 2.2, lock: 0, label: `${first(riding.name)}${r.ids.length > 1 ? ` and ${r.ids.length - 1} more` : ""}: by lift from floor ${r.from} to floor ${r.to}`, color: PAPER, real: true };
+    }
+    if (this.manual) {                                                                     // held on one place by the person watching
+      const m = this.heldPlace();
+      if (m) {
+        const recent = this.lastLine && this.wall - this.lastEventAt < 4 ? ` Just now: ${this.lastLine}` : "";
+        this.shot = { rect: m.rect, pri: 99, until: this.wall + 1, lock: Infinity, label: `${m.name}.${recent}`, color: "#cfe7da", real: false, held: true };
+        const want = this.frame(m.rect, 4, 0.55), k = 1 - Math.exp(-dt * 4.5), c = this.cam;
+        c.x += (want.x - c.x) * k; c.y += (want.y - c.y) * k; c.s += (want.s - c.s) * k;
+        this.camMoving = Math.abs(want.x - c.x) > 0.6 || Math.abs(want.y - c.y) > 0.6 || Math.abs(want.s - c.s) > 0.004;
+        return;
+      }
+      this.manual = null;
     }
     const ongoing = this.gathering || this.rides.length || this.flights.length;              // something real is still playing out: stay with it
     if (this.shot?.real && ongoing && this.wall >= this.shot.until - 0.5) this.shot.until = this.wall + 1;
@@ -791,7 +821,7 @@ export class Building {
       const i = clamp(Math.floor((x - r.x - 3) / ((r.w - 6) / 5)), 0, 4);
       if (g.seats[i]) return { agent: g.seats[i] };
     }
-    for (const m of this.staff) if (m.id !== "AUD" && Math.abs(m.x - x) < 10 && y > m.y - 26 && y < m.y + 4) return { room: { kind: "manager", floor: m.floor, name: m.name } };
+    for (const m of this.staff) if (/^M\d$/.test(m.id) && Math.abs(m.x - x) < 10 && y > m.y - 26 && y < m.y + 4) return { room: { kind: "manager", floor: m.floor, name: m.name } };
     for (const room of this.rooms) if (x >= room.x && x <= room.x + room.w && y >= room.y && y <= room.y + room.h) return { room };
     return null;
   }

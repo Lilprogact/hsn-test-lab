@@ -180,7 +180,8 @@ test("the basement's machines only show what the firm's file says", () => {
   for (const id of ["ENGINE", "DATA", "CODE", "SANDBOX", "AUDIT", "CEO"]) assert.ok(b.byId[id], `${id} is in the building`);
   assert.equal(b.hit(b.byId.ENGINE.x + 10, b.byId.ENGINE.y + 10).room.kind, "engine", "the Engine can be tapped");
   const m1 = b.staff.find((m) => m.id === "M1");
-  assert.deepEqual(b.staff.map((m) => m.id), ["M1", "M5", "AUD"], "the managers the firm's file names, and the auditor");
+  assert.deepEqual(b.staff.map((m) => m.id), ["M1", "M5", "AUD", "CEO"], "the managers the firm's file names, the auditor, and whoever is watching (the CEO)");
+  assert.equal(b.hit(b.ceoDesk().x, b.ceoDesk().y - 8).room.kind, "ceo", "a tap on the CEO's desk opens the CEO's office");
   assert.deepEqual(b.hit(m1.x, m1.y - 10).room, { kind: "manager", floor: 1, name: "Selwen Penmoor" }, "a floor manager can be tapped");
   b.destroy();
 });
@@ -354,4 +355,27 @@ test("a meeting is not ended before the group has walked to its table and sat do
   c.agents.get("A001").walking = true;
   assert.equal(c.gathered(), false); c.clock += 2; assert.equal(c.gathered(), true);
   b.destroy(); c.destroy();
+});
+
+test("the camera can be held on one floor, and let go again", () => {
+  const b = new Building(canvasStub(1150), { animations: true, describe: (e) => `said:${e.kind}` });
+  const f = firm();
+  b.setData(f, null);
+  b.attachStage(canvasStub(800));
+  b.hold("3");
+  run(b, 3);
+  assert.equal(b.shot.held, true); assert.match(b.shot.label, /^Floor 3 · Vice Presidents\./);
+  const r3 = b.floorRect[3];
+  assert.ok(Math.abs(b.cam.y - (r3.y + r3.h / 2)) < 12, "it looks at floor 3");
+  b.apply({ at: "1", kind: "level_up", agent: "A001", members: ["A001"], solo: true, group: "G13", from_group: "G01", from: 1, to: 2 }, true);
+  b.tick(0.05);
+  assert.equal(b.shot.held, true, "a held camera stays, whatever happens elsewhere");
+  assert.match(b.shot.label, /Just now: said:level_up/, "and still says what has just happened");
+  b.hold("basement"); run(b, 3);
+  assert.ok(b.cam.y + (b.sh - 34) / 2 / b.cam.s > b.H - 4, "the picture's bottom edge is the bottom of the basement"); assert.match(b.shot.label, /^The basement/);
+  b.hold("top"); run(b, 3); assert.ok(b.cam.y - (b.sh - 34) / 2 / b.cam.s < 4, "the picture's top edge is the sky above the roof");
+  b.follow(); b.tick(0.05);
+  assert.ok(!b.shot.held, "let go: the camera follows the action again");
+  b.hold("nowhere"); b.tick(0.05); assert.equal(b.manual, null, "an unknown place is not held");
+  b.destroy();
 });

@@ -56,7 +56,9 @@ could only start workflows and read results, never change code. The site tells y
     Two pictures of the same world: **the camera** (first on the page) goes to wherever the latest real event is,
     with one line saying what it is and a badge saying LIVE, REPLAY of shift N, PAUSED or BETWEEN SHIFTS; with
     nothing to show it walks round the building saying what is true there ("The Engine is waiting for price
-    history"). **The whole building** is the map: tap a desk for that agent's file, a room for its group and its
+    history"). Buttons under it hold it on one floor, the top or the basement (it then stays there and still says
+    what has just happened) or let it follow the action again, and give it the whole screen. Whoever is watching is
+    the CEO: a figure marked "you" sits at the CEO's desk. **The whole building** is the map: tap a desk for that agent's file, a room for its group and its
     challenge played day by day on the real candles, the basement's machines for their pages. Between shifts the last
     shift's real events are **replayed on a loop**, always labelled as a replay (Replay options switches it off).
     A scoreboard sits between the two pictures (most pips, best win rate with a minimum number of trades and only

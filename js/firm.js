@@ -226,7 +226,7 @@ export class FirmView {
     this.replayBox = h("div", { class: "toolbar replay-bar" });
     this.tickerEl = h("div", { class: "ticker", "aria-live": "off" });
     const company = h("div", { class: "stack", "data-panel": "company" },
-      card("The camera: wherever something real is happening", h("div", { class: "stage-wrap" }, stage),
+      card("The camera: wherever something real is happening", (this.stageWrap = h("div", { class: "stage-wrap" }, stage)), (this.camBar = h("div", { class: "cam-bar", role: "group", "aria-label": "Where the camera looks" })),
         h("p", { class: "help" }, "Not a game: nothing here is scripted. Every walk, meeting, lift ride and number is a recorded event or the Engine's own result; an idea flies down to the Engine and its result flies back. Only the sky (London time) and the blinking are decoration. Tap a person to open their file.")),
       this.scoreEl,
       card(`The whole building: all ${n} agents (tap a desk or a room)`, h("div", { class: "building-wrap" }, canvas), legend, this.replayBox),
@@ -240,12 +240,29 @@ export class FirmView {
     requestAnimationFrame(() => {
       this.building = new Building(canvas, { animations: state.animations, onAgent: (id) => this.openAgent(id), onRoom: (room) => this.openRoom(room), describe: (e) => this.eventText(e) });
       this.building.attachStage(stage);
+      this.paintCamBar();
       this.building.setStars(scoreboard(f).stars);
       this.building.setData(f, this.live);
       this.building.applyLive(this.live);
       window.hsnBuilding = this.building;                 // handy for checks from the console; holds no secrets
       this.startLoop();
     });
+  }
+
+  /** The camera's buttons: let it follow the action (the default), or hold it on one floor; and the whole screen. */
+  paintCamBar() {
+    if (!this.camBar) return;
+    const b = this.building, held = b?.manual || null;
+    const chip = (label, key, title) => h("button", { type: "button", class: `chip ${held === key || (!held && key === null) ? "on" : ""}`, title, onclick: () => { if (key === null) b?.follow(); else b?.hold(key); this.paintCamBar(); } }, label);
+    const wrap = this.stageWrap, canFull = !!(wrap && (wrap.requestFullscreen || wrap.webkitRequestFullscreen));
+    const full = h("button", { type: "button", class: "chip", title: "Give the camera the whole screen", onclick: () => {
+      const on = document.fullscreenElement || document.webkitFullscreenElement;
+      try { if (on) (document.exitFullscreen || document.webkitExitFullscreen).call(document); else (wrap.requestFullscreen || wrap.webkitRequestFullscreen).call(wrap); } catch { /* the browser said no: the picture stays where it is */ }
+    } }, "⤢ Whole screen");
+    if (wrap && !wrap.dataset.fs) { wrap.dataset.fs = "1"; for (const ev of ["fullscreenchange", "webkitfullscreenchange"]) document.addEventListener(ev, () => this.building?._resize?.()); }
+    this.camBar.replaceChildren(chip("● Follow the action", null, "The camera goes to wherever the latest real event is"), h("span", { class: "muted small" }, "or hold it on:"),
+      chip("Top", "top", "The Audit desk and the CEO's office"), ...[5, 4, 3, 2, 1].map((f) => chip(`Floor ${f}`, String(f), LEVELS[f] + "s")), chip("Basement", "basement", "The Engine, the price history, the code room and the sandbox"),
+      canFull ? full : null);
   }
 
   go(page) {

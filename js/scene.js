@@ -299,7 +299,10 @@ export function paintDynamic(c, b, view = null) {
   paintLift(c, b, view);
   // people: those sitting first, then anyone on their feet (so walkers pass in front of the desks)
   const list = [...b.agents.values()].filter((a) => inView(view, a.x - 14, a.y - 34, 28, 48)).sort((p, q) => p.y - q.y);
-  for (const m of b.staff || []) if (inView(view, m.x - 10, m.y - 30, 20, 34)) drawPerson(c, m.x, m.y, m.look, { pose: m.pose || "stand", shirt: LEVEL_COLORS[m.floor] || AMBER, mood: "neutral", t: wall, phase: m.phase, still: !b.animations });
+  for (const m of b.staff || []) if (inView(view, m.x - 10, m.y - 30, 20, 34)) {
+    drawPerson(c, m.x, m.y, m.look, { pose: m.pose || "stand", shirt: LEVEL_COLORS[m.floor] || AMBER, mood: m.tag ? "happy" : "neutral", t: wall, phase: m.phase, still: !b.animations });
+    if (m.tag) { c.font = `600 7px ${FONT}`; const tw = c.measureText(m.tag).width; R(c, m.x - tw / 2 - 2, m.y - 31, tw + 4, 9, "rgba(6,12,10,.7)"); c.fillStyle = "#d9b25f"; c.fillText(m.tag, m.x - tw / 2, m.y - 24); }
+  }
   for (const a of list) if (b.poseOf(a) === "sit") paintAgent(c, b, a, wall);
   for (const a of list) if (b.poseOf(a) !== "sit") paintAgent(c, b, a, wall);
   paintFlights(c, b, view);
@@ -371,7 +374,7 @@ function paintCeo(c, b, room, t) {
     c.strokeStyle = "#4a3d66"; c.lineWidth = 2; c.strokeRect(wx, wy, ww, wh); c.lineWidth = 1; R(c, wx + ww / 2 - 0.5, wy, 1, wh, "#4a3d66");
   }
   c.font = `10px ${FONT}`; c.fillStyle = "#9a8cc0";
-  if (!b.phone) c.fillText(fit(c, `${b.firm?.managers?.["5"]?.name || "The Head of Trading"} reports here`, room.w * 0.5 - 12), room.x + 6, room.y + 26);
+  if (!b.phone) c.fillText(fit(c, `${b.firm?.managers?.["5"]?.name || "The Head of Trading"} reports here`, room.w * 0.38 - 34), room.x + 6, room.y + 26);
 }
 
 function paintEngine(c, b, room, t) {
