@@ -472,7 +472,7 @@ export class FirmView {
       h("div", { class: "row" }, h("button", { class: "secondary small", onclick: () => this.openIdea({ id: x.idea, agent: x.byName, hypothesis: x.hypothesis, rules: x.rules, summary: x.card }) }, `Open ${x.idea}`), h("button", { class: "link", type: "button", onclick: () => this.openAgent(x.by) }, x.byName)));
     const sentCard = card("Sent to the whole company",
       h("p", { class: "help" }, "After every session each of the six names ONE strategy on the table that should go to every agent in the firm, to learn from and build on. The Engine counts the votes. "
-        + "It sends the most named one only if it also made money on the months nobody has seen (most of the firm's records did not), and equal votes are settled by the money made there. "
+        + "It sends the most named one only if it also made money on the months nobody has seen (not every record of the firm did), and equal votes are settled by the money made there. "
         + "Then, with no AI, the Engine tries the sent strategy's parts on every other agent's own best idea and keeps what improves it and holds as well. When the firm works again, every agent finds the strategy in front of it and thinks about it too."),
       v.sent.length ? h("div", { class: "stack" }, ...v.sent.slice(0, 8).map(sentTile)) : h("p", { class: "muted" }, "Nothing has been sent yet. It starts with the next session."),
       v.notSent ? h("p", { class: "warnc small" }, `${v.notSent.session != null ? `Session ${v.notSent.session}` : "The last meeting"}: nothing was sent. ${v.notSent.note}`) : null);
