@@ -409,3 +409,27 @@ test("the camera can be held on one floor, and let go again", () => {
   b.hold("nowhere"); b.tick(0.05); assert.equal(b.manual, null, "an unknown place is not held");
   b.destroy();
 });
+
+test("the Records Room shows as labels over its six, who stay at their own desks", () => {
+  const b = new Building(canvasStub(1150), { animations: true });
+  b.setData(firm(), null);
+  const six = ["A003", "A021", "A047", "A061", "A066", "A081"], seats = six.map((id) => ({ ...b.agents.get(id) }));
+  b.apply({ at: "a", kind: "room_opened", members: six, pips: six.slice(0, 3), win: six.slice(3) }, true);
+  assert.deepEqual(six.map((id) => b.agents.get(id).chip.text), ["Records Room · most pips", "Records Room · most pips", "Records Room · most pips", "Records Room · win rate", "Records Room · win rate", "Records Room · win rate"]);
+  assert.match(b.banner.text, /^The Records Room opens/);
+  six.forEach((id, k) => { const a = b.agents.get(id); assert.equal(a.group, seats[k].group, "nobody changes group"); assert.equal(a.away, seats[k].away); });
+  assert.deepEqual(b.placeOf({ kind: "room_opened", members: six }).ids, six, "the camera goes to the room's people");
+  assert.ok(b.placeOf({ kind: "room_session", members: six }).rect, "an event about the whole room still has somewhere to look");
+  b.apply({ at: "b", kind: "room_session", members: six, tested: 281, mixes: 25, leader: "A021", made: 2701.6 }, true);
+  assert.equal(b.banner.text, "The Records Room: the Engine tested 281 strategies for its six");
+  b.apply({ at: "c", kind: "room_leader", agent: "A021", idea: "I15182", made: 2701.6 }, true);
+  assert.equal(b.agents.get("A021").chip.text, "leads the growth challenge");
+  assert.equal(b.agents.get("A021").mood, "proud");
+  b.apply({ at: "d", kind: "ceo_reward", agent: "A021", idea: "I15182", made: 2701.6 }, true);
+  assert.equal(b.agents.get("A021").chip.text, "★ rewarded by the CEO");
+  assert.match(b.banner.text, /^The CEO rewards Name21 Surname$/);
+  for (const kind of ["room_entry", "room_put_forward", "room_meeting_start", "room_meeting"]) b.apply({ at: "e", kind, agent: "A003", members: six, idea: "I1" }, true);
+  assert.equal(b.agents.get("A003").chip.text, "joint strategy agreed");
+  b.apply({ at: "f", kind: "room_opened", members: six, pips: six.slice(0, 3) }, false);
+  assert.equal(b.agents.get("A081").group, seats[5].group, "applied without animation, it moves nobody either");
+});

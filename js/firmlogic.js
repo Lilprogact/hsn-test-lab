@@ -164,7 +164,8 @@ export function eventLine(e, nameOf = (id) => id) {
   switch (e.kind) {
     case "tested": {
       if (e.pips === null || e.pips === undefined) return out(`${who}: a test with no trades`, "dim");
-      const how = e.by === "engine search" ? ` (the Engine's search: ${e.what || "a small change"})` : e.by === "first test" ? ` (first test of its own code ${e.strategy || ""})` : "";
+      const how = e.by === "engine search" ? ` (the Engine's search: ${e.what || "a small change"})` : e.by === "first test" ? ` (first test of its own code ${e.strategy || ""})`
+        : e.by === "records room" ? " (the Records Room's search)" : "";
       return out(`${who}: ${pips(e.pips)}${win}${how}`, e.pips > 0 ? "up" : "down");
     }
     case "thinking": return out(`${who} is thinking`, "dim");
@@ -187,6 +188,14 @@ export function eventLine(e, nameOf = (id) => id) {
     case "rotation": return out(`A new Analyst joins: ${e.new_name || ""}`, "");
     case "retest_failed": return out(`${who}: its promoted strategy stopped passing on new data`, "down");
     case "data_update": return out(`New price data arrived: ${e.months ?? "?"} months on file`, "");
+    case "room_opened": return out(`The Records Room opens: ${(e.members || []).map(nameOf).join(", ")}`, "big");
+    case "room_session": return out(`The Records Room: the Engine tested ${n0(e.tested ?? 0)} strategies for it${e.leader ? `; ${nameOf(e.leader)} leads the growth challenge` : ""}`, "");
+    case "room_entry": return out(`${who} enters the growth challenge with ${e.idea} (${e.plan || "a money plan"})`, "");
+    case "room_leader": return out(`${who} takes the lead in the growth challenge: ${madeWords(e.made)} on the months nobody has seen`, "big");
+    case "room_put_forward": return out(`${who} puts ${e.idea} forward for the growth challenge`, "dim");
+    case "room_meeting_start": return out("The Records Room sits down to agree a joint strategy", "dim");
+    case "room_meeting": return out(`The Records Room agrees its joint strategy ${e.strategy || ""}`, "up");
+    case "ceo_reward": return out(`The CEO rewards ${who}: the best in the growth challenge (${madeWords(e.made)} on the months nobody has seen)`, "big");
     case "turn_failed": case "meeting_failed": case "transfer_declined": return null;
     default: return out(String(e.kind).replaceAll("_", " "), "dim");
   }
@@ -229,7 +238,8 @@ export function from500View(firm) {
     seen.add(card.idea);
     const t = f.by_idea[card.idea];
     const base = { idea: card.idea, agent: card.agent, Record: label, Agent: card.name || card.agent || "—" };
-    if (!t || t.error) { rows.push({ ...base, "Middle result": "—", Worst: "—", Best: "—", "Ended in profit": "—", "On months no agent has seen": t?.error ? "could not be replayed" : "too few trades to test" }); continue; }
+    if (!t || t.error) { rows.push({ ...base, "Middle result": "—", Worst: "—", Best: "—", "Ended in profit": "—",
+      "On months no agent has seen": t?.error ? "could not be replayed" : t === undefined ? "a new record: worked out at the next Engine run" : "too few trades to test" }); continue; }
     rows.push({ ...base, "Middle result": gbp(t.middle_end), Worst: gbp(t.worst_end), Best: gbp(t.best_end), "Ended in profit": `${Math.round(t.ended_in_profit_pct)} in 100 starts`,
       "On months no agent has seen": t.unseen ? `${gbp(t.unseen.middle_end)} (worst ${gbp(t.unseen.worst_end)}, ${t.unseen.runs} starts)` : "no full run fits yet" });
   }
@@ -255,4 +265,123 @@ export function auditWords(audit) {
     s += ` With the broker's real trade sizes on this account the same re-run made £${r.pnl_gbp} in ${r.sets} sets${r.not_opened_below_minimum ? ` (${r.not_opened_below_minimum} too small to open)` : ""}; that figure is for information and is not judged.`;
   }
   return s;
+}
+
+// ── The Records Room (engine: hsnlab/firm/room.py; the growth challenge is hsnlab/firm/growth.py) ───────────────────
+// The three agents with the most pips and the three with the highest win rate in one room. Everything shown is the
+// engine's own figure from firm.json's `room`; these functions only put it into words and table rows.
+const gbp0 = (v) => (v === null || v === undefined || Number.isNaN(+v)) ? "—" : (+v < 0 ? "−£" : "£") + Math.abs(Math.round(+v)).toLocaleString("en-GB");
+const one = (v) => (v === null || v === undefined || Number.isNaN(+v)) ? "—" : (+v).toLocaleString("en-GB", { maximumFractionDigits: 1 });
+export const madeWords = (v) => (v === null || v === undefined || Number.isNaN(+v)) ? "—" : +v >= 0 ? `made ${gbp0(v)}` : `lost ${gbp0(-v)}`;
+const monthName = (m) => { const [y, k] = String(m).split("-"); return `${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][(+k || 1) - 1]} ${y}`; };
+const recordLine = (c) => c ? `${n0(c.pips)} pips · ${one(c.win_rate_pct)}% wins · ${n0(c.sets)} trades` : "—";
+/** A money plan in a few words, for a table cell. */
+export const planShort = (plan) => !plan ? "—" : plan.type === "stepped" ? "your stepped cap" : `${one(plan.value)}% a trade`;
+
+/** What the Audit desk's re-run of a growth-challenge entry found, in words. */
+export function roomAuditWords(a) {
+  if (!a) return "";
+  if (!a.runs) return `Audit desk: could not re-run it${a.reason ? ` (${a.reason})` : ""}.`;
+  const part = a.complete === false ? `${a.runs} of its ${a.of} accounts (the months nobody has seen first)` : `all ${a.runs} of its accounts`;
+  if (a.ok && a.runs_to_the_penny === a.runs) return `Audit desk: re-ran ${part} through the Simulator, minute by minute with the broker's real sizes. Every one came out the same to the penny.`;
+  if (a.ok) return `Audit desk: re-ran ${part} through the Simulator. They agree (${a.runs_to_the_penny} to the penny; the biggest difference in one account is ${gbp0(a.worst_run_difference_gbp)}).`;
+  return `Audit desk: re-ran ${part} through the Simulator and does NOT agree with this entry${a.lookahead_violations ? ` (${a.lookahead_violations} trades looked ahead)` : ""}. It cannot be rewarded.`;
+}
+
+/** One entry of the growth challenge, for the page that opens when it is tapped. */
+export function roomEntryView(entry) {
+  if (!entry || !entry.tradable) return null;
+  const un = entry.unseen, pr = entry.practice, bu = entry.build_up || {}, long = bu.longest || null;
+  const starts = (entry.starts || []).map((s) => String(s));
+  const byStart = un ? starts.map((s) => { const x = un.by_start?.[s] || {}; return {
+    "Starts with": gbp0(+s), "Middle month": x.could_not_trade === un.months ? "cannot trade" : gbp0(x.middle), Worst: gbp0(x.worst), Best: gbp0(x.best),
+    "No trade possible": `${x.could_not_trade ?? 0} of ${un.months} months`, "Stopped at half": `${x.hit_stop_line ?? 0} of ${un.months} months` }; }) : [];
+  const months = Object.entries(entry.by_month || {}).map(([m, x]) => ({ Month: monthName(m),
+    Kind: x.role === "practice" ? "practised on" : x.role === "unseen" ? "nobody has seen" : x.role === "incomplete" ? "not finished (not judged)" : "—",
+    [`${gbp0(entry.in)} became`]: gbp0(x.total), Result: madeWords(x.total - entry.in), Trades: x.sets, "Accounts stopped": x.stopped || 0 }));
+  const lengths = Object.entries(bu.after_months || {}).map(([n, x]) => ({ "Left to run for": `${n} month${+n === 1 ? "" : "s"}`, "Middle result": gbp0(x.middle), Worst: gbp0(x.worst), Best: gbp0(x.best), "Start months tried": x.runs }));
+  let longLine = "", curve = [];
+  if (long) {
+    curve = long.months.map((m, i) => ({ label: monthName(m).replace(" 20", " "), value: long.money_at_month_end[i] }));
+    const big = long.first_month_over || {};
+    longLine = `Started in ${monthName(long.from)} and never stopped: ${gbp0(entry.in)} became ${gbp0(long.end)} by ${long.last_month_incomplete ? "the last price on file in " : "the end of "}${monthName(long.to)}. `
+      + (long.biggest_month ? `Its biggest month was ${monthName(long.biggest_month.month)}: ${madeWords(long.biggest_month.made)}. ` : "")
+      + (big.month ? `The first month it made ${gbp0(big.gbp)} or more was ${monthName(big.month)}, month ${big.months_in} of the run.` : `No month of the run made ${gbp0(big.gbp ?? 50000)} or more.`)
+      + (long.hit_stop_line ? ` ${long.hit_stop_line} of the ${starts.length} accounts hit the stop line on the way.` : "");
+  }
+  return {
+    title: `${entry.idea} with ${entry.plan_words}`,
+    words: entry.in_words || [],
+    result: entry.summary ? `As the Engine tests every idea (the standard £10,000 account at 1%, practice months): ${recordLine(entry.summary)}, £${n0(entry.summary.pnl_gbp)}.` : "",
+    unseen: un ? `On the ${un.months} months nobody has seen: ${gbp0(un.in_all)} in (${gbp0(un.in)} afresh each month), ${gbp0(un.out_all)} out: ${madeWords(un.made)}. Middle month ${gbp0(un.middle)}, worst ${gbp0(un.worst)}, best ${gbp0(un.best)}; in profit ${un.in_profit} of ${un.months}; ${un.hit_stop_line} of ${un.accounts} accounts hit the stop line.` : "No complete month that nobody has seen is on file yet.",
+    practice: pr ? `On the ${pr.months} months they practised on: ${gbp0(pr.in_all)} in, ${gbp0(pr.out_all)} out: ${madeWords(pr.made)}. Middle month ${gbp0(pr.middle)}, worst ${gbp0(pr.worst)}, best ${gbp0(pr.best)}.` : "",
+    byStartColumns: ["Starts with", "Middle month", "Worst", "Best", "No trade possible", "Stopped at half"], byStart,
+    monthColumns: ["Month", "Kind", `${gbp0(entry.in)} became`, "Result", "Trades", "Accounts stopped"], months,
+    lengthColumns: ["Left to run for", "Middle result", "Worst", "Best", "Start months tried"], lengths,
+    longLine, curve,
+    longHelp: "Left to run is for information: every long run passes through months the agents practised on, so their strategies are fitted to part of it. It is a replay of the past with the broker's real sizes, not a promise.",
+    audit: roomAuditWords(entry.audit),
+  };
+}
+
+/** The Records Room as the page shows it, or null when the engine has published no room. */
+export function roomView(firm) {
+  const r = firm?.room;
+  const ids = r?.order?.length ? r.order : Object.keys(r?.members || {});
+  if (!r || !ids.length) return null;
+  const rules = r.rules || {}, nameOf = (id) => r.members[id]?.name || firm?.agents?.[id]?.name || id;
+  const keep = Math.round((rules.keep_pips_share ?? 0.8) * 100), high = rules.high_win_pct ?? 70;
+  const member = (id) => {
+    const m = r.members[id], rec = m.record || {}, mi = m.mission || {}, best = mi.best;
+    let progress, improved = !!best;
+    if (m.side === "pips") progress = best ? `Win rate ${one(rec.win_rate_pct)}% → ${one(best.win_rate_pct)}%, keeping ${n0(best.pips)} of its ${n0(rec.pips)} pips (${best.idea}, ${n0(best.sets)} trades)` : `Nothing yet beats its record's win rate while keeping ${n0(mi.keep?.pips_at_least)} pips or more.`;
+    else progress = best ? `Pips ${n0(rec.pips)} → ${n0(best.pips)} at ${one(best.win_rate_pct)}% wins (${best.idea}, ${n0(best.sets)} trades)` : `Nothing yet beats its record's pips while winning ${high}% or more.`;
+    const by = best && best.by && best.by !== id ? `First tested by ${best.by_name || nameOf(best.by)}; it counts here because it is one change away from this record.` : "";
+    return { id, name: m.name || id, side: m.side, where: [m.level, m.floor ? `floor ${m.floor}` : "", m.group ? `group ${m.group}` : ""].filter(Boolean).join(", "),
+      recordIdea: rec.idea, record: recordLine(rec), words: rec.in_words || [], progress, firstBy: by, improved, tried: mi.tried ?? 0 };
+  };
+  const side = (key, title, job) => ({ key, title, job, members: ids.filter((id) => r.members[id]?.side === key).map(member) });
+  const then = Object.fromEntries((r.frontier_at_open || []).map((f) => [f.win_at_least, f]));
+  const frontier = (r.frontier || []).map((f) => { const was = then[f.win_at_least]; const up = f.pips != null && was?.pips != null && f.pips > was.pips + 1e-9; return {
+    "Win rate": `${f.win_at_least}% or more`, "Most pips when the room opened": was?.pips != null ? n0(was.pips) : "—", "Most pips now": f.pips != null ? n0(f.pips) + (up ? ` ▲ ${n0(f.pips - was.pips)}` : "") : "—",
+    "Held by": f.idea ? `${f.by_name || nameOf(f.by)} · ${f.idea} · ${one(f.win_rate_pct)}%` : "nobody yet", up }; });
+  const un = r.months?.unseen || [], pr = r.months?.practice || [];
+  const starts = (rules.starts || [100, 200, 300, 400, 500]), allIn = gbp0(starts.reduce((a, b) => a + b, 0));
+  const rows = (r.standings || []).map((s) => { const e = r.members[s.agent]?.entry || {}; const u = e.unseen, p = e.practice, long = e.build_up?.longest; return {
+    "#": s.rank, id: s.agent, Who: s.name, tradable: !!s.tradable, leader: r.leader?.agent === s.agent,
+    Entry: s.tradable ? `${s.idea} · ${planShort(e.plan)}` : "no entry yet",
+    "Unseen months": s.tradable && u ? madeWords(u.made) : (e.why || "—"),
+    "In profit": s.tradable && u ? `${u.in_profit} of ${u.months}` : "—",
+    "Practice months": s.tradable && p ? madeWords(p.made) : "—",
+    "Left to run": s.tradable && long ? gbp0(long.end) : "—" }; });
+  const lead = r.leader;
+  const t = r.together;
+  const rewards = (r.rewards || []).slice().reverse().map((x) => ({ at: x.at, agent: x.agent,
+    line: `${x.name} was rewarded for ${x.idea} with ${x.plan_words}: ${madeWords(x.made_unseen)} on the ${x.unseen_months} months nobody had seen (shift ${x.cycle}).${x.note ? ` "${x.note}"` : ""}` }));
+  return {
+    open: !!r.open, name: r.name || "The Records Room", ids, names: ids.map(nameOf),
+    intro: "The three agents with the most pips and the three with the highest win rate, in one room. Their job is one strategy with BIG PIPS AND A HIGH WIN RATE, and the growth challenge below. They keep their seats and floors: the room is extra work. Each one's record is pinned, so nobody forgets what made it; the Engine's search for the room starts from those records and the mixes are made from them.",
+    sessions: r.sessions || 0, openedCycle: r.opened_cycle, openedAt: r.opened_at, last: r.last_session || null, closedAt: r.closed_at || null,
+    sides: [side("pips", "In the room for the most pips", `Their job: raise the win rate and keep the pips (at least ${keep}% of the record's).`),
+      side("win", "In the room for the highest win rate", `Their job: raise the pips and keep the win rate (${high}% or more).`)],
+    frontierColumns: ["Win rate", "Most pips when the room opened", "Most pips now", "Held by"], frontier,
+    frontierHelp: `The most pips any strategy of the six has made at each win rate (Engine results on the practice months, ${rules.min_trades ?? 30} trades or more, in profit). The room is getting somewhere when the right-hand numbers go up.`,
+    challenge: {
+      rules: [`One account of each size, ${starts.map((s) => gbp0(s)).join(", ")} (${gbp0(starts.reduce((a, b) => a + b, 0))} in all), starts in a month and trades one strategy with a money plan. Every month of the history is played.`,
+        `The sizes are the broker's real ones: at FOREX.com gold trades in whole ounces, and at ${rules.leverage ?? 20}:1 everything open at once has to fit the account. So £100 cannot open a gold trade at all, and an exit that splits a trade into five positions needs five ounces.`,
+        `A trade may risk at most ${rules.max_risk_pct ?? 20}% of the balance (your stepped cap starts there). An account that falls below half its start opens nothing more.`,
+        `The ranking is the money made on the ${un.length} months nobody in the firm has seen${un.length ? ` (${un.map(monthName).join(", ")})` : ""}: ${allIn} afresh each month, so ${gbp0(starts.reduce((a, b) => a + b, 0) * un.length)} goes in over them. Each agent's entry is chosen by the Engine on the ${pr.length} practice months only, so nothing is picked on the months it is ranked on.`],
+      columns: ["#", "Who", "Entry", "Unseen months", "In profit", "Practice months", "Left to run"], rows,
+      leader: lead ? { id: lead.agent, name: lead.name, canReward: !!lead.can_be_rewarded && !!r.open,
+        line: `${lead.name} leads: ${lead.idea} with ${lead.plan_words} ${madeWords(lead.made_unseen)} on the months nobody has seen.`,
+        audit: roomAuditWords(r.members[lead.agent]?.entry?.audit) } : null,
+      note: lead ? "" : (r.leader_note || "No standings yet: the room has not had an Engine session."),
+    },
+    together: t && t.tradable ? { idea: t.idea, entry: t,
+      line: `Together: ${t.what || "the room's joint strategy"} (${t.idea}, ${t.plan_words}). On the months nobody has seen: ${gbp0(t.unseen?.in_all)} in, ${gbp0(t.unseen?.out_all)} out: ${madeWords(t.unseen?.made)}. On practice months: ${madeWords(t.practice?.made)}.`,
+      credit: (t.credit || []).map(nameOf),
+      beats: rows.filter((x) => x.tradable).every((x) => (t.unseen?.made ?? -Infinity) > (r.members[x.id]?.entry?.unseen?.made ?? -Infinity)) } : null,
+    mixes: (r.mixes || []).length,
+    learned: r.learned || [], meetings: (r.meetings || []).slice().reverse(), rewards,
+  };
 }

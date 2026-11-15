@@ -2,7 +2,7 @@
 // the ticker's lines and the token help. Every figure in these tests is made up; none is shown on the site.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { from500View, auditWords } from "../js/firmlogic.js";
+import { from500View, auditWords, roomView, roomEntryView, roomAuditWords, madeWords, planShort } from "../js/firmlogic.js";
 import { PACES, nextShift, readiness, scoreboard, eventLine, tokenHelp, MIN_TRADES_FOR_WIN_RANK, SHIFT, shiftsLeft, shiftPlan, shiftPlanWords, minutesUsedThisMonth, minutesNote, lookWords, CODE_WORDS } from "../js/firmlogic.js";
 
 test("the four paces match the engine's schedules", () => {
@@ -234,6 +234,10 @@ test("the £500 test: one row a record holder, the engine's own figures, and the
   assert.equal(v.rows[0]["On months no agent has seen"], "no full run fits yet");
   assert.equal(v.rows[1]["Middle result"], "—");
   assert.equal(v.rows[1]["On months no agent has seen"], "too few trades to test");
+  // a record set since the engine last worked the test out (the Records Room's search set two on 15 Nov 2026) is said to be new, not "too few trades"
+  const fresh = from500View({ ...firm, records: { ...firm.records, top_pips: { idea: "I9", agent: "A032", name: "Yelwen" } } });
+  assert.equal(fresh.rows[0]["On months no agent has seen"], "a new record: worked out at the next Engine run");
+  assert.equal(fresh.rows[0]["Middle result"], "—");
 });
 
 test("the Audit desk in words: what was judged, and the broker's real trade sizes beside it", () => {
@@ -256,4 +260,157 @@ test("a refused pass that the Audit desk re-checks is said plainly, either way",
   const no = eventLine({ at: "t", kind: "audit_recheck", agent: "A007", solo: true, floor: 1, ok: false }, name);
   assert.equal(no.text, "Aden Bramcroft: the Audit desk re-checked its refused pass like for like and still disagrees");
   assert.equal(no.cls, "down");
+});
+
+
+// ── the Records Room (every figure below is made up for the test) ────────────────────────────────────────────────────
+const shape = (months, made, extra = {}) => ({ months, in: 1500, in_all: 1500 * months, out_all: 1500 * months + made, made, middle: 1600, worst: 900, best: 4000, in_profit: months - 1,
+  hit_stop_line: 2, accounts: months * 5, sets: 90, by_start: { 100: { middle: 100, worst: 100, best: 100, could_not_trade: months, hit_stop_line: 0 }, 500: { middle: 620.4, worst: 240, best: 1900, could_not_trade: 0, hit_stop_line: 1 } }, ...extra });
+const entry = (idea, madeUnseen, madePractice, extra = {}) => ({ tradable: true, idea, plan: { type: "percent", value: 20 }, plan_words: "20% of the balance on every set", starts: [100, 500], in: 1500,
+  in_words: ["Take the indicator's XAUUSD signals on the 30M, 1H charts.", "Exit: close the whole set at TP3, following the indicator's trailing stop."],
+  summary: { pips: 40881.6, win_rate_pct: 52.7, sets: 150, pnl_gbp: 11523.09 }, unseen: shape(6, madeUnseen), practice: shape(7, madePractice),
+  by_month: { "2025-10": { role: "practice", total: 5297.09, sets: 192, stopped: 0 }, "2025-11": { role: "unseen", total: 1215.66, sets: 101, stopped: 1 }, "2026-11": { role: "incomplete", total: 2227.04, sets: 45, stopped: 0 } },
+  build_up: { after_months: { 1: { runs: 13, middle: 1800, worst: 843.63, best: 7103.77 }, 12: { runs: 2, middle: 108095.43, worst: 22883.51, best: 193307.35 } },
+    longest: { from: "2025-10", to: "2026-11", months: ["2025-10", "2025-11", "2026-11"], money_at_month_end: [5520.9, 3919.99, 254865.07], made_in_month: [4020.9, -1600.91, 250945.08], end: 254865.07,
+      biggest_month: { month: "2026-11", made: 250945.08 }, first_month_over: { gbp: 50000, month: "2026-11", months_in: 3 }, hit_stop_line: 0, biggest_lots: 503, last_month_incomplete: true } }, ...extra });
+const record = (idea, pips, win, by, by_name) => ({ idea, pips, win_rate_pct: win, sets: 304, pnl_gbp: 14793.04, by, by_name, rules: { instrument: "XAUUSD" }, in_words: ["Only when the market on that chart is sideways."] });
+function roomFirm(patch = {}) {
+  const audit = { ok: true, runs: 65, of: 65, complete: true, runs_to_the_penny: 65, worst_run_difference_gbp: 0, lookahead_violations: 0 };
+  const room = { name: "The Records Room", open: true, opened_cycle: 100, opened_at: "2026-11-15T11:00:00Z", sessions: 1, order: ["A032", "A014", "A013"],
+    last_session: { at: "2026-11-15T11:01:36Z", tested: 281, found_in_library: 64, mixes: 25 },
+    rules: { keep_pips_share: 0.8, high_win_pct: 70, min_trades: 30, starts: [100, 200, 300, 400, 500], max_risk_pct: 20, stop_line: 0.5, leverage: 20 },
+    months: { practice: ["2025-10", "2025-12"], unseen: ["2025-11", "2026-01"], incomplete: ["2026-11"] },
+    members: {
+      A032: { name: "Yelwen Kingsshaw", side: "pips", level: "Vice President", floor: 3, group: "G16", pool: 68, record: record("I13206", 43200.3, 46.8, "A032", "Yelwen Kingsshaw"),
+        mission: { goal: "win_rate", keep: { pips_at_least: 34560.2 }, tried: 190, gain: 6.7, best: { idea: "I15156", pips: 37829, win_rate_pct: 53.5, sets: 144, by: "A032" } }, entry: entry("I15182", 2701.6, 12918.48, { audit }) },
+      A014: { name: "Kelra Ravenmere", side: "pips", level: "Analyst", floor: 1, group: "G11", pool: 66, record: record("I09404", 43607.7, 46.7, "A014", "Kelra Ravenmere"),
+        mission: { goal: "win_rate", keep: { pips_at_least: 34886.2 }, tried: 204, gain: 4.6, best: { idea: "I11978", pips: 40004.1, win_rate_pct: 51.3, sets: 152, by: "A032", by_name: "Yelwen Kingsshaw" } }, entry: entry("I11050", -305.66, 11939.58) },
+      A013: { name: "Nelen Yewley", side: "win", level: "Director", floor: 4, group: "G18", pool: 59, record: record("I04062", 12188.9, 75, "A013", "Nelen Yewley"),
+        mission: { goal: "pips", keep: { win_rate_at_least: 70 }, tried: 148, gain: 0, best: null }, entry: { tradable: false, tried: 12, why: "None of its strategies can be opened on accounts this small with the broker's real sizes." } },
+    },
+    frontier_at_open: [{ win_at_least: 45, idea: "I09404", pips: 43607.7, win_rate_pct: 46.7 }, { win_at_least: 75, idea: "I04062", pips: 12188.9, win_rate_pct: 75 }],
+    frontier: [{ win_at_least: 45, idea: "I15049", pips: 44104.9, win_rate_pct: 46.6, by: "A032", by_name: "Yelwen Kingsshaw" }, { win_at_least: 75, idea: "I04062", pips: 12188.9, win_rate_pct: 75, by: "A013", by_name: "Nelen Yewley" },
+      { win_at_least: 80, idea: null, pips: null }],
+    standings: [{ rank: 1, agent: "A032", name: "Yelwen Kingsshaw", side: "pips", tradable: true, idea: "I15182", plan_words: "20% of the balance on every set", made_unseen: 2701.6, made_practice: 12918.48 },
+      { rank: 2, agent: "A014", name: "Kelra Ravenmere", side: "pips", tradable: true, idea: "I11050", plan_words: "20% of the balance on every set", made_unseen: -305.66, made_practice: 11939.58 },
+      { rank: 3, agent: "A013", name: "Nelen Yewley", side: "win", tradable: false, idea: null, plan_words: null, made_unseen: null, made_practice: null }],
+    leader: { agent: "A032", name: "Yelwen Kingsshaw", idea: "I15182", plan_words: "20% of the balance on every set", made_unseen: 2701.6, audit_ok: true, can_be_rewarded: true },
+    together: { ...entry("I14923", 3056.62, 8328.3), what: "Yelwen Kingsshaw's strategy with Nelen Yewley's trade limits", credit: ["A032", "A013"], plan_words: "15% of the balance on every set" },
+    mixes: [{ idea: "I14923", what: "x", by: ["A032", "A013"] }], learned: ["A single-target exit, so a small account can open it."], meetings: [{ cycle: 101, minutes: "firm/minutes/cycle0101-ROOM.md" }],
+    rewards: [{ at: "2026-11-15T12:00:00Z", cycle: 100, agent: "A032", name: "Yelwen Kingsshaw", idea: "I15182", plan_words: "20% of the balance on every set", made_unseen: 2701.6, unseen_months: 6, note: "well done" }],
+    ...patch };
+  return { room, agents: { A032: { name: "Yelwen Kingsshaw" } } };
+}
+
+test("the Records Room: who is in it, what each one's job is, and how far it has got against its pinned record", () => {
+  assert.equal(roomView({}), null);
+  assert.equal(roomView({ room: null }), null);
+  const v = roomView(roomFirm());
+  assert.equal(v.open, true);
+  assert.deepEqual(v.names, ["Yelwen Kingsshaw", "Kelra Ravenmere", "Nelen Yewley"]);
+  assert.deepEqual(v.sides.map((s) => [s.key, s.members.map((m) => m.id)]), [["pips", ["A032", "A014"]], ["win", ["A013"]]]);
+  assert.match(v.sides[0].job, /raise the win rate and keep the pips \(at least 80% of the record's\)/);
+  assert.match(v.sides[1].job, /raise the pips and keep the win rate \(70% or more\)/);
+  const [yel, kel] = v.sides[0].members, nel = v.sides[1].members[0];
+  assert.equal(yel.record, "43,200 pips · 46.8% wins · 304 trades");
+  assert.equal(yel.recordIdea, "I13206");
+  assert.equal(yel.where, "Vice President, floor 3, group G16");
+  assert.equal(yel.progress, "Win rate 46.8% → 53.5%, keeping 37,829 of its 43,200 pips (I15156, 144 trades)");
+  assert.equal(yel.improved, true);
+  assert.equal(kel.firstBy, "First tested by Yelwen Kingsshaw; it counts here because it is one change away from this record.", "an idea another agent tested first is said to be so");
+  assert.equal(yel.firstBy, "");
+  assert.equal(nel.progress, "Nothing yet beats its record's pips while winning 70% or more.");
+  assert.equal(nel.improved, false);
+  assert.deepEqual(nel.words, ["Only when the market on that chart is sideways."], "what made the record is on the page");
+  assert.match(v.intro, /Each one's record is pinned, so nobody forgets what made it/);
+});
+
+test("the Records Room: the frontier says where the room started and what has moved", () => {
+  const v = roomView(roomFirm());
+  assert.deepEqual(v.frontier.map((f) => [f["Win rate"], f["Most pips when the room opened"], f["Most pips now"], f["Held by"], f.up]), [
+    ["45% or more", "43,608", "44,105 ▲ 497", "Yelwen Kingsshaw · I15049 · 46.6%", true],
+    ["75% or more", "12,189", "12,189", "Nelen Yewley · I04062 · 75%", false],
+    ["80% or more", "—", "—", "nobody yet", false]]);
+});
+
+test("the growth challenge: ranked on the months nobody has seen, with the broker's real sizes said plainly", () => {
+  const v = roomView(roomFirm()), c = v.challenge;
+  assert.match(c.rules[0], /^One account of each size, £100, £200, £300, £400, £500 \(£1,500 in all\)/);
+  assert.match(c.rules[1], /gold trades in whole ounces.*20:1.*£100 cannot open a gold trade at all.*five positions needs five ounces/);
+  assert.match(c.rules[2], /at most 20% of the balance.*below half its start opens nothing more/);
+  assert.match(c.rules[3], /money made on the 2 months nobody in the firm has seen \(Nov 2025, Jan 2026\): £1,500 afresh each month, so £3,000 goes in over them\..*chosen by the Engine on the 2 practice months only/);
+  assert.deepEqual(c.columns, ["#", "Who", "Entry", "Unseen months", "In profit", "Practice months", "Left to run"]);
+  assert.deepEqual(c.rows.map((r) => [r["#"], r.Who, r.Entry, r["Unseen months"], r["In profit"], r["Practice months"], r["Left to run"], r.leader]), [
+    [1, "Yelwen Kingsshaw", "I15182 · 20% a trade", "made £2,702", "5 of 6", "made £12,918", "£254,865", true],
+    [2, "Kelra Ravenmere", "I11050 · 20% a trade", "lost £306", "5 of 6", "made £11,940", "£254,865", false],
+    [3, "Nelen Yewley", "no entry yet", "None of its strategies can be opened on accounts this small with the broker's real sizes.", "—", "—", "—", false]]);
+  assert.deepEqual([planShort({ type: "stepped" }), planShort({ type: "percent", value: 7.5 }), planShort(null)], ["your stepped cap", "7.5% a trade", "—"]);
+  assert.equal(c.leader.line, "Yelwen Kingsshaw leads: I15182 with 20% of the balance on every set made £2,702 on the months nobody has seen.");
+  assert.equal(c.leader.canReward, true);
+  assert.match(c.leader.audit, /re-ran all 65 of its accounts through the Simulator.*Every one came out the same to the penny\./);
+  assert.equal(v.rewards[0].line, 'Yelwen Kingsshaw was rewarded for I15182 with 20% of the balance on every set: made £2,702 on the 6 months nobody had seen (shift 100). "well done"');
+  // nobody to reward: the engine's own reason is shown; a closed room rewards nobody; an unaudited leader cannot be rewarded
+  const none = roomView(roomFirm({ leader: null, leader_note: "The best entry lost money on the months nobody has seen, so there is nobody to reward yet." })).challenge;
+  assert.equal(none.leader, null);
+  assert.match(none.note, /lost money on the months nobody has seen/);
+  assert.equal(roomView(roomFirm({ open: false })).challenge.leader.canReward, false);
+  assert.equal(roomView(roomFirm({ leader: { agent: "A032", name: "Yelwen Kingsshaw", idea: "I15182", plan_words: "p", made_unseen: 1, can_be_rewarded: false } })).challenge.leader.canReward, false);
+});
+
+test("the growth challenge together: the joint entry, who it is credited to, and whether it beats every member alone", () => {
+  const t = roomView(roomFirm()).together;
+  assert.equal(t.line, "Together: Yelwen Kingsshaw's strategy with Nelen Yewley's trade limits (I14923, 15% of the balance on every set). On the months nobody has seen: £9,000 in, £12,057 out: made £3,057. On practice months: made £8,328.");
+  assert.deepEqual(t.credit, ["Yelwen Kingsshaw", "Nelen Yewley"]);
+  assert.equal(t.beats, true);
+  const worse = roomFirm();
+  worse.room.together.unseen.made = 100;
+  assert.equal(roomView(worse).together.beats, false);
+  assert.equal(roomView(roomFirm({ together: { tradable: false } })).together, null);
+  const v = roomView(roomFirm());
+  assert.deepEqual([v.mixes, v.learned.length, v.meetings[0].minutes, v.sessions, v.last.tested], [1, 1, "firm/minutes/cycle0101-ROOM.md", 1, 281]);
+});
+
+test("one entry in full: every account size, every month, and what it became when left to run", () => {
+  assert.equal(roomEntryView(null), null);
+  assert.equal(roomEntryView({ tradable: false }), null);
+  const e = roomEntryView(roomFirm().room.members.A032.entry);
+  assert.equal(e.title, "I15182 with 20% of the balance on every set");
+  assert.equal(e.unseen, "On the 6 months nobody has seen: £9,000 in (£1,500 afresh each month), £11,702 out: made £2,702. Middle month £1,600, worst £900, best £4,000; in profit 5 of 6; 2 of 30 accounts hit the stop line.");
+  assert.match(e.practice, /^On the 7 months they practised on: £10,500 in, £23,418 out: made £12,918\./);
+  assert.deepEqual(e.byStart.map((r) => [r["Starts with"], r["Middle month"], r["No trade possible"], r["Stopped at half"]]), [["£100", "cannot trade", "6 of 6 months", "0 of 6 months"], ["£500", "£620", "0 of 6 months", "1 of 6 months"]]);
+  assert.deepEqual(e.months.map((m) => [m.Month, m.Kind, m["£1,500 became"], m.Result, m.Trades]), [["Oct 2025", "practised on", "£5,297", "made £3,797", 192], ["Nov 2025", "nobody has seen", "£1,216", "lost £284", 101],
+    ["Nov 2026", "not finished (not judged)", "£2,227", "made £727", 45]]);
+  assert.deepEqual(e.lengths.map((l) => [l["Left to run for"], l["Middle result"], l["Start months tried"]]), [["1 month", "£1,800", 13], ["12 months", "£108,095", 2]]);
+  assert.equal(e.longLine, "Started in Oct 2025 and never stopped: £1,500 became £254,865 by the last price on file in Nov 2026. Its biggest month was Nov 2026: made £250,945. The first month it made £50,000 or more was Nov 2026, month 3 of the run.");
+  assert.deepEqual(e.curve, [{ label: "Oct 25", value: 5520.9 }, { label: "Nov 25", value: 3919.99 }, { label: "Nov 26", value: 254865.07 }]);
+  assert.match(e.longHelp, /passes through months the agents practised on.*not a promise/);
+  assert.match(e.audit, /to the penny/);
+  const quiet = roomFirm().room.members.A014.entry;
+  quiet.build_up.longest.first_month_over = { gbp: 50000, month: null, months_in: null };
+  quiet.build_up.longest.hit_stop_line = 2;
+  quiet.build_up.longest.last_month_incomplete = false;
+  assert.match(roomEntryView(quiet).longLine, /by the end of Nov 2026\..*No month of the run made £50,000 or more\. 2 of the 2 accounts hit the stop line on the way\.$/);
+});
+
+test("the Audit desk on a growth-challenge entry, and money in words", () => {
+  assert.equal(roomAuditWords(null), "");
+  assert.equal(roomAuditWords({ ok: false, reason: "this entry's data is not loaded" }), "Audit desk: could not re-run it (this entry's data is not loaded).");
+  assert.match(roomAuditWords({ ok: true, runs: 30, of: 65, complete: false, runs_to_the_penny: 28, worst_run_difference_gbp: 12.4 }), /re-ran 30 of its 65 accounts \(the months nobody has seen first\).*They agree \(28 to the penny; the biggest difference in one account is £12\)/);
+  assert.match(roomAuditWords({ ok: false, runs: 65, of: 65, complete: true, runs_to_the_penny: 3, lookahead_violations: 2 }), /does NOT agree with this entry \(2 trades looked ahead\)\. It cannot be rewarded\.$/);
+  assert.deepEqual([madeWords(2701.6), madeWords(-305.66), madeWords(0), madeWords(null)], ["made £2,702", "lost £306", "made £0", "—"]);
+});
+
+test("the room's real events each become one plain line", () => {
+  const name = (id) => ({ A032: "Yelwen Kingsshaw", A014: "Kelra Ravenmere" }[id] || id);
+  const line = (e) => eventLine({ at: "t", ...e }, name);
+  assert.equal(line({ kind: "room_opened", members: ["A032", "A014"] }).text, "The Records Room opens: Yelwen Kingsshaw, Kelra Ravenmere");
+  assert.equal(line({ kind: "room_session", tested: 281, leader: "A032" }).text, "The Records Room: the Engine tested 281 strategies for it; Yelwen Kingsshaw leads the growth challenge");
+  assert.equal(line({ kind: "room_session", tested: 0 }).text, "The Records Room: the Engine tested 0 strategies for it");
+  assert.equal(line({ kind: "room_entry", agent: "A014", idea: "I11050", plan: "20% of the balance on every set" }).text, "Kelra Ravenmere enters the growth challenge with I11050 (20% of the balance on every set)");
+  assert.deepEqual([line({ kind: "room_leader", agent: "A032", made: 2701.6 }).text, line({ kind: "room_leader", agent: "A032", made: 2701.6 }).cls], ["Yelwen Kingsshaw takes the lead in the growth challenge: made £2,702 on the months nobody has seen", "big"]);
+  assert.equal(line({ kind: "room_put_forward", agent: "A014", idea: "I15001" }).text, "Kelra Ravenmere puts I15001 forward for the growth challenge");
+  assert.equal(line({ kind: "room_meeting_start", members: ["A032"] }).text, "The Records Room sits down to agree a joint strategy");
+  assert.equal(line({ kind: "room_meeting", strategy: "I15200" }).text, "The Records Room agrees its joint strategy I15200");
+  assert.equal(line({ kind: "ceo_reward", agent: "A032", made: 2701.6 }).text, "The CEO rewards Yelwen Kingsshaw: the best in the growth challenge (made £2,702 on the months nobody has seen)");
+  assert.equal(line({ kind: "tested", agent: "A032", pips: 44104.9, win: 46.6, by: "records room" }).text, "Yelwen Kingsshaw: +44,105 pips, 47% wins (the Records Room's search)");
 });

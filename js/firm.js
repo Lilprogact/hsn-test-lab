@@ -9,7 +9,8 @@ import { state, startRun, liveText } from "./app.js";
 import { ukDateTime } from "./clock.js";
 import { h, card, stat, table, badge, field, select, input, money, num, pct, signed, openModal, closeModal, mdLite } from "./ui.js";
 import { Building, LEVEL_COLORS, BAR_COLORS, isRunning, coverageWorld } from "./building.js";
-import { from500View, auditWords } from "./firmlogic.js";
+import { from500View, auditWords, roomView, roomEntryView } from "./firmlogic.js";
+import { barChart } from "./charts.js";
 import { PACES, nextShift, readiness, scoreboard, eventLine, tokenHelp, shiftPlan, shiftPlanWords, minutesUsedThisMonth, minutesNote } from "./firmlogic.js";
 import { ChallengeReplay } from "./replay.js";
 
@@ -71,6 +72,8 @@ function story(x, nameOf) {
     case "swapped_group": return `Moved from group ${x.from} to group ${x.to} when a transfer took its seat.`;
     case "credited": return `Its rules made it into group ${x.group}'s strategy: ${(x.rules || []).join(", ")}.`;
     case "commendation": return `Commendation: ${x.detail}`;
+    case "room_joined": return x.detail ? x.detail.charAt(0).toUpperCase() + x.detail.slice(1) + "." : "Put in the Records Room by the CEO.";
+    case "ceo_reward": return x.detail ? x.detail.charAt(0).toUpperCase() + x.detail.slice(1) + "." : "Rewarded by the CEO.";
     case "replaced": return x.detail;
     case "discussion": return `Took part in floor ${x.floor}'s discussion.`;
     default: return x.kind;
@@ -217,7 +220,9 @@ export class FirmView {
     const head = card(h("span", {}, "HSN Capital ", badge(`shift ${f.cycle}`), " ", badge(rankingBadge(state.match).text, rankingBadge(state.match).kind), " ", f.paused ? badge("PAUSED", "warn") : badge("working", "good")),
       this.controlEl, this.sayEl);
 
-    const pages = [["company", "Company", `The building with all ${n} agents. Tap an agent or a room.`], ["people", "People", "Every agent's level and progress to the next one."],
+    const pages = [["company", "Company", `The building with all ${n} agents. Tap an agent or a room.`],
+      ["room", "Records Room", "The three with the most pips and the three with the highest win rate in one room: big pips and a high win rate, and the growth challenge from £100 to £500."],
+      ["people", "People", "Every agent's level and progress to the next one."],
       ["code", "Rules & code", "The rules and the strategy code the agents and teams wrote themselves."], ["records", "Records", "Floors, budgets, the leaderboard, challenges, minutes and reports."],
       ["ceo", "CEO's office", "Ask anyone a question, set the focus, change how the firm works."]];
     const nav = h("div", { class: "subtabs", role: "tablist" }, ...pages.map(([k, label]) => h("button", { type: "button", class: `subtab ${this.page === k ? "is-active" : ""}`, role: "tab", "data-page": k, onclick: () => this.go(k) }, label)));
@@ -226,6 +231,8 @@ export class FirmView {
 
     // Company
     this.scoreEl = h("div", { class: "stats scoreboard" });
+    this.from500El = h("div", { class: "card from500", hidden: true });
+    this.roomEl = h("div", { class: "card roomstrip", hidden: true });
     const canvas = h("canvas", { "aria-label": "The HSN Capital building with every agent at a desk" });
     const stage = h("canvas", { class: "stage", "aria-label": "A close view of the building that follows the latest real event" });
     const legend = h("div", { class: "building-legend" },
@@ -238,11 +245,11 @@ export class FirmView {
     const company = h("div", { class: "stack", "data-panel": "company" },
       card("The camera: wherever something real is happening", (this.stageWrap = h("div", { class: "stage-wrap" }, stage)), (this.camBar = h("div", { class: "cam-bar", role: "group", "aria-label": "Where the camera looks" })),
         h("p", { class: "help" }, "Not a game: nothing here is scripted. Every walk, meeting, lift ride and number is a recorded event or the Engine's own result; an idea flies down to the Engine and its result flies back. Only the sky (London time) and the blinking are decoration. Tap a person to open their file.")),
-      this.scoreEl,
+      this.scoreEl, this.from500El, this.roomEl,
       card(`The whole building: all ${n} agents (tap a desk or a room)`, h("div", { class: "building-wrap" }, canvas), legend, this.replayBox),
       card("What just happened", h("p", { class: "help" }, "The latest real events, newest first. Each test is the Engine's result on real price history; nothing here is written by the AI."), this.tickerEl));
     // the other pages are built when first opened (they are long)
-    this.panels = { company, people: null, code: null, records: null, ceo: null };
+    this.panels = { company, room: null, people: null, code: null, records: null, ceo: null };
     this.panelBox = h("div", {}, company);
     this.root.replaceChildren(h("div", { class: "stack" }, head, nav, this.pageHelp, this.panelBox));
     this.paintControl(); this.paintScore(); this.paintTicker(); this.paintReplay();
@@ -281,6 +288,7 @@ export class FirmView {
     this.root.querySelectorAll(".subtab").forEach((b) => b.classList.toggle("is-active", b.dataset.page === page));
     if (this.pageHelp) this.pageHelp.textContent = (this.pagesMeta || []).find((x) => x[0] === page)?.[2] || "";
     if (!this.panels[page]) {
+      if (page === "room") this.panels.room = this.roomPage();
       if (page === "people") { this.staffBox = h("div", {}); this.panels.people = card("Staff: level and progress to the next level", this.staffBox); this.paintStaff(); }
       if (page === "code") this.panels.code = this.codePage();
       if (page === "records") this.panels.records = h("div", { class: "stack" }, this.firmPage(), this.brainsCard());
@@ -304,9 +312,107 @@ export class FirmView {
       stat("AI this month", `$${(+sb.spent || 0).toFixed(2)}`, `of $${num(sb.budget, 0)} · ${num(minutesUsedThisMonth(state.minutes), 0)} of ${num(sb.minutesBudget, 0)} GitHub minutes`));
     // the £500 test for the record holders (the engine's own figures; firmlogic.from500View)
     const f5 = from500View(this.firm);
-    if (!this.from500El) { this.from500El = h("div", { class: "card from500" }); this.scoreEl.after(this.from500El); }
-    this.from500El.hidden = !f5;
-    if (f5) this.from500El.replaceChildren(h("h3", {}, f5.title), table(f5.columns, f5.rows), h("p", { class: "help" }, f5.help), h("p", { class: "help" }, f5.sizes));
+    if (this.from500El) {
+      this.from500El.hidden = !f5;
+      if (f5) this.from500El.replaceChildren(h("h3", {}, f5.title), table(f5.columns, f5.rows), h("p", { class: "help" }, f5.help), h("p", { class: "help" }, f5.sizes));
+    }
+    // the Records Room, in short (its own page has everything)
+    const rv = roomView(this.firm);
+    if (this.roomEl) {
+      this.roomEl.hidden = !rv;
+      if (rv) {
+        const who = (id, name) => h("button", { class: "chip", type: "button", onclick: () => this.openAgent(id) }, name);
+        const lead = rv.challenge.leader;
+        this.roomEl.replaceChildren(h("h3", {}, rv.name, " ", rv.open ? badge("open", "good") : badge("closed", "warn")),
+          h("p", { class: "help" }, "The three with the most pips and the three with the highest win rate, working on big pips AND a high win rate, and on the growth challenge: start from £100 to £500 and make the most money."),
+          ...rv.sides.map((sd) => h("div", { class: "row" }, h("span", { class: "muted small room-side-label" }, sd.key === "pips" ? "Most pips:" : "Highest win rate:"), ...sd.members.map((m) => who(m.id, m.name)))),
+          h("p", { class: lead ? "good" : "muted" }, lead ? lead.line : rv.challenge.note),
+          h("div", { class: "row" }, h("button", { class: "secondary", onclick: () => this.go("room") }, "Open the Records Room")));
+      }
+    }
+  }
+
+  // ── the Records Room (engine: hsnlab/firm/room.py; the growth challenge: hsnlab/firm/growth.py) ───────────────────
+  roomPage() {
+    const f = this.firm, v = roomView(f);
+    const cost = "Engine only: no AI is used. It is a run on GitHub of about ten minutes.";
+    const open = (again) => h("button", { class: again ? "secondary" : "primary", onclick: () => {
+      if (again && !confirm("Pick the six again from the records as they stand now? The room's work so far stays in the library; its standings start again.")) return;
+      this.act("The Records Room is opening… (the Engine is working; about ten minutes)", { action: "room", do: "open" }, (res) => this.roomSaid(res, "The Records Room is open."));
+    } }, again ? "Pick the six again" : "Open the Records Room");
+    if (!v) {
+      return card("The Records Room", h("p", {}, "Put the three agents with the most pips and the three with the highest win rate in one room. They work on one strategy with big pips AND a high win rate, and on the growth challenge: start an account anywhere from £100 to £500 and make the most money. You reward the best."),
+        h("p", { class: "help" }, "They keep their seats and floors: the room is extra work. Each one's record is pinned, so nobody forgets what made it."),
+        h("div", { class: "row" }, open(false)), h("p", { class: "muted small" }, cost));
+    }
+    const li = (x) => h("li", {}, x);
+    const tile = (m) => h("div", { class: `room-member ${m.improved ? "up" : ""}` },
+      h("div", { class: "row between" }, h("button", { class: "link room-name", type: "button", onclick: () => this.openAgent(m.id) }, m.name), h("span", { class: "muted small" }, m.where)),
+      h("p", { class: "room-record" }, "Pinned record ", h("b", {}, m.recordIdea), ": ", m.record),
+      h("p", { class: m.improved ? "good" : "muted" }, m.improved ? "▲ " : "", m.progress), m.firstBy ? h("p", { class: "muted small" }, m.firstBy) : null,
+      h("details", {}, h("summary", {}, `What made the record (${m.tried} of its strategies count so far)`), h("ul", { class: "rules" }, ...m.words.map(li))));
+    const sides = h("div", { class: "grid two" }, ...v.sides.map((sd) => h("div", { class: "stack room-side" }, h("h3", {}, sd.title), h("p", { class: "help" }, sd.job),
+      ...(sd.members.length ? sd.members.map(tile) : [h("p", { class: "muted" }, "Nobody yet.")]))));
+    const c = v.challenge;
+    const rows = c.rows.map((r) => ({ ...r, Who: h("button", { class: "link", type: "button", onclick: () => this.openAgent(r.id) }, r.leader ? "★ " : "", r.Who),
+      Entry: r.tradable ? h("button", { class: "link", type: "button", onclick: () => this.openRoomEntry(r.id) }, r.Entry) : h("span", { class: "muted" }, r.Entry) }));
+    const note = input("text", "", { placeholder: "a word for them (optional)", maxlength: 200 });
+    const reward = c.leader ? h("button", { class: "primary", disabled: c.leader.canReward ? null : true, onclick: () => {
+      if (!confirm(`Reward ${c.leader.name} as the best in the growth challenge? It goes on their record and lifts their mood; it never skips a check.`)) return;
+      this.act(`Rewarding ${c.leader.name}…`, { action: "reward", note: note.value }, (res) => res?.result?.ok ? `${res.result.name} has been rewarded. It is on their file and in the room's record.` : (res?.result?.error || "The reward was not recorded."));
+    } }, `Reward ${c.leader.name}`) : null;
+    const only = h("input", { type: "checkbox", checked: f.settings?.room_only ? true : null });
+    only.addEventListener("change", () => this.act("Saving…", { action: "resize", room_only: only.checked },
+      () => only.checked ? "Saved. From the next shift only the room's six think and only the room works: shorter shifts, and the whole AI budget goes to the room." : "Saved. From the next shift the whole firm works again; the room's six still think first."));
+    const work = h("button", { class: "secondary", onclick: () => this.act("The Records Room's Engine session is running… (about ten minutes)", { action: "room", do: "work" }, (res) => this.roomSaid(res, "The room's Engine session is done.")) }, "Run the room's Engine work now");
+    const close = h("button", { class: "secondary", onclick: () => { if (confirm("Close the Records Room? Its six carry on with their ordinary work. Everything the room did stays on record, and you can open it again.")) this.act("Closing the room…", { action: "room", do: "close" }, () => "The Records Room is closed."); } }, "Close the room");
+    const last = v.last ? `Its last Engine session (${ukDateTime(v.last.at)} UK) tested ${num(v.last.tested, 0)} new strategies, found ${num(v.last.found_in_library, 0)} more already in the library and made ${num(v.last.mixes, 0)} mixes.` : "It has not had an Engine session yet.";
+    return h("div", { class: "stack" },
+      card(h("span", {}, v.name, " ", v.open ? badge("open", "good") : badge("closed", "warn"), " ", badge(`${v.sessions} session${v.sessions === 1 ? "" : "s"}`)),
+        h("p", {}, v.intro), h("p", { class: "muted small" }, `Opened in shift ${v.openedCycle}${v.openedAt ? ` (${ukDateTime(v.openedAt)} UK)` : ""}. ${last}`), sides),
+      card("Big pips and a high win rate: where the room stands", table(v.frontierColumns, v.frontier), h("p", { class: "help" }, v.frontierHelp)),
+      card("The growth challenge: start from £100 to £500, make the most money", h("ul", { class: "rules" }, ...c.rules.map(li)),
+        rows.length ? table(c.columns, rows, { numeric: ["#"] }) : null,
+        h("p", { class: "help" }, "Tap an entry for every month, every account size and what it became when left to run. Money on the months nobody has seen is the honest figure; the practice months are the ones the strategies are fitted to. Unseen months: the months nobody in the firm has seen. Left to run: what the five accounts (£1,500) became when started in the first month of the history and never stopped (for information: that run passes through practice months)."),
+        c.leader ? h("div", { class: "room-leader" }, h("p", { class: "good" }, h("b", {}, c.leader.line)), h("p", { class: "muted small" }, c.leader.audit),
+          v.open ? h("div", { class: "row" }, note, reward) : null, !c.leader.canReward && v.open ? h("p", { class: "warnc small" }, "It cannot be rewarded until the Audit desk's re-run agrees with it.") : null)
+          : h("p", { class: "muted" }, c.note),
+        v.rewards.length ? h("div", {}, h("h3", {}, "Rewards you have given"), h("ul", { class: "rules" }, ...v.rewards.map((x) => h("li", {}, `${ukDateTime(x.at)} UK: ${x.line}`)))) : null),
+      card("Together", v.together ? h("div", { class: "stack" }, h("p", { class: v.together.beats ? "good" : "" }, v.together.line),
+          h("p", { class: "muted small" }, `Credit: ${v.together.credit.join(" and ") || "the room"}.${v.together.beats ? " Together they beat every member's own entry on the months nobody has seen." : ""}`),
+          h("div", { class: "row" }, h("button", { class: "secondary small", onclick: () => this.openRoomEntry("together") }, "See the joint entry")))
+          : h("p", { class: "muted" }, "No joint strategy that a small account can open yet."),
+        h("p", { class: "help" }, `The Engine has mixed every pips record with every win-rate record (${v.mixes} mixes: one's strategy with the other's filters, exit, trade limits or charts). When a shift has AI budget the six also meet to agree one joint strategy and money plan; the Engine tests what they agree.`),
+        v.learned.length ? h("div", {}, h("h3", {}, "What the room agreed in its last meeting"), h("ul", { class: "rules" }, ...v.learned.map(li))) : null,
+        v.meetings.length ? h("div", { class: "row" }, ...v.meetings.slice(0, 6).map((m) => h("button", { class: "secondary small", onclick: () => this.openDoc(m.minutes) }, `Minutes, shift ${m.cycle}`))) : h("p", { class: "muted small" }, "The room has not met yet: a meeting needs a shift with AI budget.")),
+      card("Running the room", h("p", { class: "help" }, "In every shift the room's six think first, the room meets, and the Engine searches around their records, mixes them and judges the challenge. You can also run the Engine's part on its own, between shifts."),
+        v.open ? h("label", { class: "chip wide" }, only, "Only the room works: nobody else thinks and the rest of the firm's shift is skipped (shorter shifts; the whole AI budget goes to the room's six)") : null,
+        h("div", { class: "row" }, v.open ? work : null, open(true), v.open ? close : null), h("p", { class: "muted small" }, cost)));
+  }
+
+  roomSaid(res, ok) {
+    const r = res?.result || {};
+    if (!r.ok) return r.error || "It could not be done; see the run on GitHub.";
+    return r.leader ? `${ok} ${r.leader.name} leads the growth challenge.` : `${ok} ${r.leader_note || ""}`;
+  }
+
+  /** One entry of the growth challenge, in full: every account size, every month, and what it became left to run. */
+  openRoomEntry(id) {
+    const room = this.firm?.room || {};
+    const entry = id === "together" ? room.together : room.members?.[id]?.entry;
+    const v = roomEntryView(entry);
+    if (!v) { openModal(h("p", { class: "muted" }, "No entry to show.")); return; }
+    const who = id === "together" ? "The room together" : (room.members?.[id]?.name || this.nameOf(id));
+    const canvas = h("canvas", { class: "chart", "aria-label": "The five accounts together at the end of each month, left to run" });
+    openModal(h("div", { class: "stack" }, h("h2", {}, `${who}: ${v.title}`),
+      h("ul", { class: "rules" }, ...v.words.map((x) => h("li", {}, x))), v.result ? h("p", { class: "muted small" }, v.result) : null,
+      h("h3", {}, "The growth challenge"), h("p", {}, h("b", {}, v.unseen)), h("p", { class: "muted" }, v.practice), v.audit ? h("p", { class: "muted small" }, v.audit) : null,
+      h("h3", {}, "By the size of the account (months nobody has seen)"), table(v.byStartColumns, v.byStart),
+      h("h3", {}, "Month by month (the five accounts together, started afresh each month)"), table(v.monthColumns, v.months, { numeric: ["Trades", "Accounts stopped"] }),
+      h("h3", {}, "Left to run"), h("p", {}, v.longLine), v.curve.length ? h("div", { class: "chart-wrap" }, canvas) : null,
+      v.lengths.length ? table(v.lengthColumns, v.lengths, { numeric: ["Start months tried"] }) : null, h("p", { class: "help" }, v.longHelp),
+      id !== "together" ? h("div", { class: "row" }, h("button", { class: "secondary", onclick: () => this.openAgent(id) }, `Open ${who}'s file`)) : null));
+    if (v.curve.length) requestAnimationFrame(() => barChart(canvas, v.curve.map((x) => ({ label: x.label, value: x.value, color: "#35d07f" })), { unit: "" }));
   }
 
   paintTicker() {

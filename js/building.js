@@ -29,11 +29,13 @@ const WORKING = new Set(["thinking", "researching", "coding", "testing"]);
 // how long the director waits after each kind of event before showing the next (seconds of building time)
 const STEP = { tested: 0.14, thinking: 0.1, looked: 0.3, coded: 0.3, meeting_start: 1.6, meeting: 1.2, challenge_start: 1.6, challenge_failed: 0.6, audit_start: 1.4,
   audit_failed: 0.9, audit_recheck: 1.2, battle: 0.9, level_up: 3.4, swapped_down: 3.0, transfer: 1.6, rotation: 0.6, solo_passed_no_seat: 0.6, data_update: 0.3, turn_failed: 0.1,
-  meeting_failed: 0.3, transfer_declined: 0.2, retest_failed: 0.4 };
+  meeting_failed: 0.3, transfer_declined: 0.2, retest_failed: 0.4,
+  room_opened: 2.4, room_session: 0.8, room_entry: 0.5, room_put_forward: 0.3, room_leader: 1.6, room_meeting_start: 1.4, room_meeting: 1.2, ceo_reward: 2.6 };
 // the camera: how much an event matters (a bigger number takes the picture from a smaller one) and how long it is shown (real seconds)
 const SHOT = { tested: [1, 2.4], thinking: [1, 2.2], looked: [1, 2.6], coded: [3, 3.2], meeting_start: [3, 4.2], meeting: [2, 2.6], challenge_start: [4, 4], challenge_failed: [4, 3.2],
   audit_start: [4, 3.6], audit_failed: [4, 3.2], audit_recheck: [4, 3.6], level_up: [5, 8], swapped_down: [4, 6], battle: [4, 3.2], transfer: [3, 5], rotation: [2, 3], solo_passed_no_seat: [3, 3.2],
-  data_update: [3, 3.2], retest_failed: [3, 3] };
+  data_update: [3, 3.2], retest_failed: [3, 3],
+  room_opened: [5, 6], room_session: [2, 3], room_entry: [2, 2.8], room_put_forward: [1, 2.4], room_leader: [4, 4.5], room_meeting_start: [3, 3.6], room_meeting: [3, 3], ceo_reward: [5, 7] };
 const MAX_FLIGHTS = 70;
 
 const first = (name) => String(name || "").split(" ")[0];
@@ -395,6 +397,16 @@ export class Building {
       case "rotation": { const a = A(e.agent); if (a) { a.name = e.new_name || a.name; a.look = lookOf(a.id, a.name); a.mood = "neutral"; a.prog = null; this.dirty = true; chip(e.agent, "new Analyst", "#5aa9ff", 3); } break; }
       case "retest_failed": if (animate) this.flash(e.group, BAD, 1.2); break;
       case "data_update": if (animate) { this.say(`New price data: ${e.months} months on file`, 3); const p = this.port("data"); this.fly({ x: p.x - 60, y: this.groundY - 6 }, p, "#5aa9ff", 0, this.dur(0.8)); } break;
+      // The Records Room (engine: room.py): its six keep their seats, so the room shows as labels over them
+      case "room_opened": ids.forEach((id, k) => chip(id, (e.pips || []).includes(id) ? "Records Room · most pips" : "Records Room · win rate", AMBER, 4.5, k * 0.2));
+        if (animate) this.say("The Records Room opens: three with the most pips, three with the highest win rate", 5); break;
+      case "room_session": if (animate) this.say(`The Records Room: the Engine tested ${fmt(e.tested)} strategies for its six`, 4); break;
+      case "room_entry": chip(e.agent, "enters the growth challenge", "#5aa9ff", 2.8); break;
+      case "room_put_forward": chip(e.agent, "puts an entry forward", "#5aa9ff", 2.4); break;
+      case "room_leader": { const a = A(e.agent); if (a) { a.mood = "proud"; chip(e.agent, "leads the growth challenge", AMBER, 4.5); } break; }
+      case "room_meeting_start": ids.forEach((id) => chip(id, "Records Room meeting", "#b784ff", 3.2)); break;
+      case "room_meeting": ids.forEach((id) => chip(id, "joint strategy agreed", GOOD, 2.8)); break;
+      case "ceo_reward": { const a = A(e.agent); if (a) { a.mood = "proud"; chip(e.agent, "★ rewarded by the CEO", AMBER, 6); } if (animate) this.say(`The CEO rewards ${a?.name || "the room's leader"}`, 5); break; }
       default: break;
     }
     if (animate) this.point(e);
@@ -691,6 +703,7 @@ export class Building {
       case "transfer": return { follow: e.agent, ids: [e.agent, e.swapped].filter(Boolean), rect: room(g(e.to_group)) };
       case "data_update": return { rect: this.byId.DATA };
       case "battle": return { rect: room(g(e.challenger)) };
+      case "room_opened": case "room_session": case "room_meeting_start": case "room_meeting": { const ids = this.members(e); return { ids, rect: room(g(a(ids[0])?.group)) }; }
       default: return { rect: room(g(e.agent ? a(e.agent)?.group : e.group)) };
     }
   }

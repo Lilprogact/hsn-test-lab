@@ -280,3 +280,19 @@ canvas.stage { display: block; width: 100%; touch-action: manipulation; }
 /* the £500 test under the scoreboard */
 .card.from500 { margin-top: 12px; overflow-x: auto; }
 .card.from500 h3 { margin: 0 0 8px; }
+/* The Records Room: the short strip on the Company page and the room's own page */
+.card.roomstrip { margin-top: 12px; border-color: var(--amber); }
+.card.roomstrip h3 { margin: 0 0 6px; }
+.card.roomstrip .row { margin: 6px 0; }
+.room-side-label { min-width: 118px; }
+.room-side h3 { margin: 0; }
+.room-member { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--bg2); }
+.room-member.up { border-color: var(--green2); }
+.room-member p { margin: 6px 0; }
+.room-member .room-name { font-weight: 700; font-size: 1.02rem; }
+.room-member details summary { color: var(--muted); font-size: .85rem; cursor: pointer; }
+.room-leader { border: 1px solid var(--amber); border-radius: 12px; padding: 10px 12px; margin-top: 10px; }
+.room-leader p { margin: 4px 0 8px; }
+.room-leader input { flex: 1 1 220px; }
+.timeline li.tl-room_joined::before, .timeline li.tl-ceo_reward::before { background: var(--amber); }
+button[disabled] { opacity: .5; cursor: not-allowed; }
