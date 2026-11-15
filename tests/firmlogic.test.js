@@ -247,3 +247,13 @@ test("the Audit desk in words: what was judged, and the broker's real trade size
   assert.match(auditWords({ ...a, ok: false, real_lots: { pnl_gbp: 0, sets: 0, not_opened_below_minimum: 40 } }), /DISAGREED .* made £0 in 0 sets \(40 too small to open\);/);
   assert.equal(auditWords({ ok: false, reason: "no bars in the audit months" }), "Audit desk: could not re-run it (no bars in the audit months).");
 });
+
+test("a refused pass that the Audit desk re-checks is said plainly, either way", () => {
+  const name = (id) => ({ A007: "Aden Bramcroft" }[id] || id);
+  const ok = eventLine({ at: "t", kind: "audit_recheck", group: "G08", floor: 1, ok: true, fast_pnl: 1241.64, audit_pnl: 1222.48 }, name);
+  assert.equal(ok.text, "Group G08: the Audit desk re-checked its refused pass like for like and agrees. The pass stands");
+  assert.equal(ok.cls, "up");
+  const no = eventLine({ at: "t", kind: "audit_recheck", agent: "A007", solo: true, floor: 1, ok: false }, name);
+  assert.equal(no.text, "Aden Bramcroft: the Audit desk re-checked its refused pass like for like and still disagrees");
+  assert.equal(no.cls, "down");
+});

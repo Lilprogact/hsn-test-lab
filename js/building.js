@@ -28,11 +28,11 @@ export { LEVEL_COLORS, BAR_COLORS };
 const WORKING = new Set(["thinking", "researching", "coding", "testing"]);
 // how long the director waits after each kind of event before showing the next (seconds of building time)
 const STEP = { tested: 0.14, thinking: 0.1, looked: 0.3, coded: 0.3, meeting_start: 1.6, meeting: 1.2, challenge_start: 1.6, challenge_failed: 0.6, audit_start: 1.4,
-  audit_failed: 0.9, battle: 0.9, level_up: 3.4, swapped_down: 3.0, transfer: 1.6, rotation: 0.6, solo_passed_no_seat: 0.6, data_update: 0.3, turn_failed: 0.1,
+  audit_failed: 0.9, audit_recheck: 1.2, battle: 0.9, level_up: 3.4, swapped_down: 3.0, transfer: 1.6, rotation: 0.6, solo_passed_no_seat: 0.6, data_update: 0.3, turn_failed: 0.1,
   meeting_failed: 0.3, transfer_declined: 0.2, retest_failed: 0.4 };
 // the camera: how much an event matters (a bigger number takes the picture from a smaller one) and how long it is shown (real seconds)
 const SHOT = { tested: [1, 2.4], thinking: [1, 2.2], looked: [1, 2.6], coded: [3, 3.2], meeting_start: [3, 4.2], meeting: [2, 2.6], challenge_start: [4, 4], challenge_failed: [4, 3.2],
-  audit_start: [4, 3.6], audit_failed: [4, 3.2], level_up: [5, 8], swapped_down: [4, 6], battle: [4, 3.2], transfer: [3, 5], rotation: [2, 3], solo_passed_no_seat: [3, 3.2],
+  audit_start: [4, 3.6], audit_failed: [4, 3.2], audit_recheck: [4, 3.6], level_up: [5, 8], swapped_down: [4, 6], battle: [4, 3.2], transfer: [3, 5], rotation: [2, 3], solo_passed_no_seat: [3, 3.2],
   data_update: [3, 3.2], retest_failed: [3, 3] };
 const MAX_FLIGHTS = 70;
 
@@ -380,6 +380,9 @@ export class Building {
       case "audit_failed": ids.forEach((id) => { const a = A(id); a.away = null; a.status = "idle"; a.mood = "frustrated"; a.hold = 0; }); this.auditing = null;
         if (e.agent) chip(e.agent, "audit disagreed", BAD, 3); else if (animate) this.flash(e.group, BAD, 1.2);
         if (animate) this.word("audit disagreed", this.byId.AUDIT, BAD); break;
+      case "audit_recheck": this.auditing = { who: e.agent ? first(A(e.agent)?.name) : e.group, floor: e.floor, until: this.clock + this.dur(3) };
+        if (e.agent) chip(e.agent, e.ok ? "re-checked ✓ pass stands" : "re-check: still disagrees", e.ok ? GOOD : BAD, 3.5); else if (animate) this.flash(e.group, e.ok ? GOOD : BAD, 1.2);
+        if (animate) this.word(e.ok ? "re-checked: the pass stands" : "re-checked: still disagrees", this.byId.AUDIT, e.ok ? GOOD : BAD); break;
       case "solo_passed_no_seat": { const a = A(e.agent); if (a) { a.away = null; a.status = "idle"; a.mood = "proud"; a.hold = 0; chip(e.agent, "passed ✓ waiting for a seat", AMBER, 3.5); } break; }
       case "battle": if (animate) { this.flash(e.challenger, AMBER, 1.4); this.flash(e.incumbent, AMBER, 1.4); this.word("promotion battle", this.groups.get(e.challenger)?.rect, AMBER); }
         (this.groups.get(e.challenger)?.seats || []).forEach((id) => { const a = A(id); if (a) { a.away = null; a.status = "idle"; a.hold = 0; } }); break;
@@ -683,7 +686,7 @@ export class Building {
       case "meeting_start": case "meeting": case "meeting_failed": { const floor = e.floor || g(e.group)?.floor, d = this.rooms.find((r) => r.kind === "discussion" && r.floor === floor);
         if (floor === 1 && !e.discussion) return { rect: room(g(e.group)) };
         return d ? { rect: d.virtual || d.small ? { x: d.x, y: d.y - 14, w: Math.min(d.w, 330), h: d.h + 26 } : d } : null; }
-      case "audit_start": case "audit_failed": return { rect: this.byId.AUDIT };
+      case "audit_start": case "audit_failed": case "audit_recheck": return { rect: this.byId.AUDIT };
       case "level_up": case "swapped_down": return { follow: this.members(e)[0], ids: this.members(e), rect: room(g(e.group)) };
       case "transfer": return { follow: e.agent, ids: [e.agent, e.swapped].filter(Boolean), rect: room(g(e.to_group)) };
       case "data_update": return { rect: this.byId.DATA };

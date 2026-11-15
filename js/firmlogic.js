@@ -177,6 +177,8 @@ export function eventLine(e, nameOf = (id) => id) {
     case "challenge_failed": return out(`${who}: challenge not passed${(e.reasons || []).length ? " — " + e.reasons[0] : ""}`, "down");
     case "audit_start": return out(`Audit desk re-runs ${who}'s challenge`, "dim");
     case "audit_failed": return out(`${who}: the Audit desk disagreed, level-up blocked`, "down");
+    case "audit_recheck": return e.ok ? out(`${who}: the Audit desk re-checked its refused pass like for like and agrees. The pass stands`, "up")
+      : out(`${who}: the Audit desk re-checked its refused pass like for like and still disagrees`, "down");
     case "level_up": return out(`${who} moves up: floor ${e.from} → ${e.to}${e.skip ? " (skipped a floor!)" : ""}${e.solo ? " on its own" : ""}`, "big");
     case "swapped_down": return out(`${who} moves down: floor ${e.from} → ${e.to}`, "down");
     case "solo_passed_no_seat": return out(`${who} passed its own challenge; waiting for a seat on the floor above`, "up");

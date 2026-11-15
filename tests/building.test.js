@@ -271,6 +271,20 @@ test("people walk along the floor, take the stairs between rows of rooms and the
   b.destroy();
 });
 
+test("a re-checked pass is shown at the Audit desk, and the building carries on", () => {
+  const b = new Building(canvasStub(1150), { animations: true });
+  b.setData(firm(), null);
+  b.apply({ at: "a", kind: "audit_recheck", group: "G13", floor: 2, ok: true, members: b.groups.get("G13").seats.filter(Boolean) }, true);
+  assert.equal(b.auditing.who, "G13", "the Audit desk shows whose pass it is re-checking");
+  assert.deepEqual(b.placeOf({ kind: "audit_recheck", group: "G13" }), { rect: b.byId.AUDIT }, "and the camera goes to the Audit desk");
+  const one = b.groups.get("G13").seats.find(Boolean);
+  b.apply({ at: "b", kind: "audit_recheck", agent: one, solo: true, floor: 2, ok: false, members: [one] }, true);
+  assert.match(b.agents.get(one).chip.text, /still disagrees/);
+  b.apply({ at: "c", kind: "solo_passed_no_seat", agent: one, floor: 2 }, true);
+  assert.equal(b.agents.get(one).mood, "proud");
+  b.destroy();
+});
+
 test("a level-up is the lift and a celebration on the new floor", () => {
   const b = new Building(canvasStub(1150), { animations: true });
   const f = firm();
