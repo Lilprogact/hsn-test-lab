@@ -414,7 +414,7 @@ export class FirmView {
     const mtg = v.meeting;
     const lastMeeting = mtg ? card(`The room's last meeting: ${mtg.session ? `session ${mtg.session}` : `shift ${mtg.cycle}`} (${ukDateTime(mtg.at)} UK)`,
       v.think && v.think.session === mtg.session ? h("p", { class: "muted small" }, v.think.line) : null,
-      h("p", { class: "help" }, "Each tile is one member: what it brought from thinking alone, and what it said at the table. The words are its own answer, given before it could hear the others, and every number in them is checked against what the Engine showed it."),
+      h("p", { class: "help" }, "Each tile is one member: what it brought from thinking alone, and what it said at the table. The words are its own answer, given before it could hear the others. Every number in them is checked against what the Engine showed it, and one the Engine never showed is flagged. That check cannot tell when a real number is set beside the wrong idea, so where the Engine has put something right, its correction is under the lessons further down."),
       h("div", { class: "grid two" }, ...mtg.seats.map(seatTile)),
       h("h3", {}, "The vote"), h("p", {}, h("b", {}, mtg.votesLine), " ", h("span", { class: mtg.one && mtg.joint ? "good" : "" }, mtg.outcome)),
       mtg.joint ? h("div", { class: "room-leader" }, h("p", {}, h("b", {}, `The joint strategy they wrote down: ${mtg.joint.idea}`), ` · ${mtg.joint.line} on the practice months · money plan: ${mtg.joint.plan}`),
@@ -423,6 +423,9 @@ export class FirmView {
       mtg.proposals.length ? h("div", {}, h("p", { class: "muted small" }, "Each member's own proposal for the joint strategy was tested by the Engine as well (practice months). Which becomes the room's entry in the growth challenge, the one they agreed, one of these or one of the Engine's mixes, is the Engine's choice on the practice months:"),
         h("ul", { class: "rules" }, ...mtg.proposals.map((x) => h("li", {}, `${x.by}: ${x.idea} · ${x.line}`)))) : null,
       mtg.learned.length ? h("div", {}, h("h3", {}, "What the room carries into everyone's own work"), h("ul", { class: "rules" }, ...mtg.learned.map(li))) : null,
+      mtg.corrections.length ? h("div", {}, h("h3", {}, "The Engine's corrections to what was said"),
+        h("p", { class: "muted small" }, "The members' words above stay as they were said. These are the Engine's own figures, and each member is given them with the meeting on its next turn."),
+        h("ul", { class: "rules" }, ...mtg.corrections.map(li))) : null,
       mtg.recordNote ? h("p", { class: "muted small" }, `A note on this record: ${mtg.recordNote}`) : null,
       mtg.minutes ? h("div", { class: "row" }, h("button", { class: "secondary small", onclick: () => this.openDoc(mtg.minutes) }, "Read the minutes")) : null) : null;
     const tile = (m) => h("div", { class: `room-member ${m.improved ? "up" : ""}` },

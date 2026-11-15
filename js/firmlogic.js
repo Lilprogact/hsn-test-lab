@@ -375,7 +375,8 @@ export function roomView(firm) {
         : "The room did not want one strategy this time, so its ideas stay apart. Nobody has to merge.",
       one, joint: mt.idea ? { idea: mt.idea, line: mt.result ? recordLine(mt.result) : "", why: mt.why || "", plan: mt.plan ? planShort(mt.plan) : "the Engine's own grid of plans",
         credit: Object.entries(mt.credit_notes || {}).map(([id, what]) => `${nameOf(id)}: ${(what || []).join(", ")}`) } : null,
-      jointError: one && !mt.idea ? (mt.joint_error || "") : "", proposals: props, learned: mt.learned || [], seats: ids.map(seat), recordNote: mt.record_note || "" };
+      jointError: one && !mt.idea ? (mt.joint_error || "") : "", proposals: props, learned: mt.learned || [], corrections: (mt.corrections || []).filter((x) => String(x || "").trim()), seats: ids.map(seat),
+      recordNote: mt.record_note || "" };
   })() : null;
   const lt = r.last_think || null;
   const think = lt ? { session: lt.session, at: lt.at, seconds: lt.seconds, cost: lt.cost_usd, calls: lt.ai_calls, allowance: lt.allowance_usd, model: lt.model, effort: lt.effort,

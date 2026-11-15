@@ -449,7 +449,8 @@ function sessionRoom(decision = "merge") {
     voices, idea: one ? "I15310" : null, plan: one ? { type: "percent", value: 15 } : null, rules: one ? { instrument: "XAUUSD" } : null, result: one ? card("I15310", 30120.5, 55.2, 210) : null,
     why: one ? "Yelwen's entries with Nelen's limit." : "", credits: one ? ["A013", "A032"] : [], credit_notes: one ? { A032: ["its entries"], A013: ["its two sets a day limit"] } : {},
     ideas: one ? [{ idea: "I15310", by: "room", result: card("I15310", 30120.5, 55.2, 210) }, { idea: "I15311", by: "A032", result: card("I15311", 28849.3, 47.3, 245) }] : [],
-    learned: one ? ["A single-target exit, so a small account can open it."] : [], minutes: "firm/minutes/cycle0100-ROOM-S3.md", cost_usd: 0.61 };
+    learned: one ? ["A single-target exit, so a small account can open it."] : [], corrections: one ? ["I15301 made £9,696, not £23,659.", " "] : undefined,
+    minutes: "firm/minutes/cycle0100-ROOM-S3.md", cost_usd: 0.61 };
   const f = roomFirm({ thinks: 3, meetings: [{ cycle: 99, minutes: "firm/minutes/cycle0099-ROOM.md" }, meeting],
     last_think: { session: 3, at: "2026-11-15T13:27:00Z", seconds: 722, cost_usd: 2.4312, ai_calls: 13, allowance_usd: 5.2, model: "claude-opus-5-5", effort: "high", replay: "firm/replays/room.json",
       members: { A032: { came_back: true, idea: "I15301", lookups: 9, cost_usd: 0.31 }, A014: { came_back: false, idea: null, lookups: null, cost_usd: 0.02 }, A013: { came_back: true, idea: "I15303", lookups: 11, cost_usd: 0.35 } },
@@ -472,6 +473,7 @@ test("the room's last session: who thought alone, what each brought and said in 
   assert.deepEqual(m.joint, { idea: "I15310", line: "30,121 pips · 55.2% wins · 210 trades", why: "Yelwen's entries with Nelen's limit.", plan: "15% a trade", credit: ["Yelwen Kingsshaw: its entries", "Nelen Yewley: its two sets a day limit"] });
   assert.deepEqual(m.proposals, [{ idea: "I15311", by: "Yelwen Kingsshaw", line: "28,849 pips · 47.3% wins · 245 trades" }]);
   assert.deepEqual(m.learned, ["A single-target exit, so a small account can open it."]);
+  assert.deepEqual(m.corrections, ["I15301 made £9,696, not £23,659."], "what the Engine put right is carried with the meeting; the members' words stay as said");
   const [yel, kel, nel] = m.seats;
   assert.deepEqual([yel.name, yel.brought.idea, yel.brought.line, yel.spoke, yel.voteWords, yel.proposal], ["Yelwen Kingsshaw", "I15301", "37,829 pips · 53.5% wins · 144 trades", true, "wants one joint strategy", "I15311"]);
   assert.equal(yel.say, "I15301 keeps 37,829 pips at 53.5% wins. I would take Nelen's two-a-day limit.", "its own words, as recorded");
@@ -480,7 +482,7 @@ test("the room's last session: who thought alone, what each brought and said in 
   assert.deepEqual([nel.brought.idea, nel.spoke, nel.voteWords, nel.say], ["I15303", false, "did not speak", ""]);
   // kept apart: nothing is claimed that did not happen
   const k = roomView(sessionRoom("keep_separate"));
-  assert.equal(k.meeting.one, false); assert.equal(k.meeting.joint, null); assert.deepEqual(k.meeting.proposals, []);
+  assert.equal(k.meeting.one, false); assert.equal(k.meeting.joint, null); assert.deepEqual(k.meeting.proposals, []); assert.deepEqual(k.meeting.corrections, []);
   assert.equal(k.meeting.outcome, "The room did not want one strategy this time, so its ideas stay apart. Nobody has to merge.");
   assert.match(k.think.line, /then the room voted 1 to 1 to keep its ideas apart\. /);
   // a room that has never had a session of thinking and meeting
