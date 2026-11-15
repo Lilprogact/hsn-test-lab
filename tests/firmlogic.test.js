@@ -702,9 +702,11 @@ test("the budget boxes are for the whole month: a number that would stop the wor
   const room = sentRoom(); room.budget = { firm_spent_usd: 185.4322, firm_budget_usd: 6 };
   const kv = keepView(room, { firm: {} }, null, null);
   assert.equal(kv.canStart, false); assert.equal(kv.sessions, 0);
-  assert.equal(kv.line, "This month's AI budget is set to $6.00 and $185.43 has already been spent, so nothing is left for a session. "
-    + "Raise the AI budget in the CEO's office (How the firm works) to more than what is spent: to allow $6 more, for example, enter 191.43.");
-  assert.equal(kv.startWhy, kv.line);
+  const low = "No money can be spent: this month's AI budget is set to $6.00 and $185.43 is already spent, so no session with AI can run. "
+    + "The room's Engine work needs no AI and goes on. (To allow sessions again, raise the AI budget in the CEO's office, How the firm works: for $6 more, for example, enter 191.43.)";
+  assert.equal(kv.line, low); assert.equal(kv.startWhy, low);
+  // the chain's last word (the session it tried was refused for the same reason) is not said twice
+  assert.equal(keepView(room, { firm: {} }, { next: false, at: "2026-11-15T20:22:39Z", why: "No further session was started: the session that has just ended was not run or did not finish ($0.00 is left)." }, null).line, low);
   // the money really used up (budget 200, spent 199.50) keeps the ordinary words
   const used = sentRoom(); used.budget = { firm_spent_usd: 199.5, firm_budget_usd: 200 };
   assert.match(keepView(used, {}, null, null).line, /^\$0\.50 of this month's AI money is left/);

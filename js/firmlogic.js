@@ -544,8 +544,8 @@ export function keepView(firm, config, chain, roomLive, busy = "", now = Date.no
   const each = cost > 0.2 ? `the last one cost $${cost.toFixed(2)}` : `about $${ROOM_SESSION.typicalUsd.toFixed(2)} each`;
   // nothing left because the month's budget is set below what is already spent (not because the money has been used)
   const setLow = (+b.firm_budget_usd || 0) > 0 && (+b.firm_spent_usd || 0) >= (+b.firm_budget_usd || 0) && (+b.firm_budget_usd || 0) < 0.9 * (+b.firm_spent_usd || 0);
-  const lowWhy = `This month's AI budget is set to $${(+b.firm_budget_usd || 0).toFixed(2)} and $${(+b.firm_spent_usd || 0).toFixed(2)} has already been spent, so nothing is left for a session. `
-    + `Raise the AI budget in the CEO's office (How the firm works) to more than what is spent: to allow $6 more, for example, enter ${((+b.firm_spent_usd || 0) + 6).toFixed(2)}.`;
+  const lowWhy = `No money can be spent: this month's AI budget is set to $${(+b.firm_budget_usd || 0).toFixed(2)} and $${(+b.firm_spent_usd || 0).toFixed(2)} is already spent, so no session with AI can run. `
+    + `The room's Engine work needs no AI and goes on. (To allow sessions again, raise the AI budget in the CEO's office, How the firm works: for $6 more, for example, enter ${((+b.firm_spent_usd || 0) + 6).toFixed(2)}.)`;
   const money = setLow ? lowWhy : `$${left.toFixed(2)} of this month's AI money is left: enough for about ${n} session${n === 1 ? "" : "s"} (${each}).`;
   const last = chain && chain.why ? `${chain.why}` : "";
   let line;
@@ -554,7 +554,7 @@ export function keepView(firm, config, chain, roomLive, busy = "", now = Date.no
     line = `It is switched on, but no session has started since ${Math.round((now - lastSign) / 60000)} minutes ago, so something stopped it. Press Stop, then start it again. ${money}`;
   else if (on) line = `Switched on. The next session starts by itself within a minute or two of the last one saving. ${money}`;
   else if (running) line = "Not running back to back: the session in progress is the last one. Nothing more starts by itself.";
-  else line = (last ? `${last} ` : "") + money;
+  else line = (last && !setLow ? `${last} ` : "") + money;          // with the budget set low, the chain's last word says the same thing
   return { on, running, sessions: n, left, line, last, canStart: !!r?.open && !on && !running && n >= 1,
     startWhy: !r?.open ? "The room is closed." : n < 1 ? (setLow ? lowWhy : `$${left.toFixed(2)} is left of this month's AI money, and a session needs at least $${ROOM_SESSION.minUsd.toFixed(2)}.`) : "",
     confirm: `Keep the Records Room running, back to back?\n\nA session starts now. When it has saved, the next one starts by itself, and so on, until this month's AI money is used `
