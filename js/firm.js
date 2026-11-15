@@ -359,7 +359,7 @@ export class FirmView {
     const note = input("text", "", { placeholder: "a word for them (optional)", maxlength: 200 });
     const reward = c.leader ? h("button", { class: "primary", disabled: c.leader.canReward ? null : true, onclick: () => {
       if (!confirm(`Reward ${c.leader.name} as the best in the growth challenge? It goes on their record and lifts their mood; it never skips a check.`)) return;
-      this.act(`Rewarding ${c.leader.name}…`, { action: "reward", note: note.value }, (res) => res?.result?.ok ? `${res.result.name} has been rewarded. It is on their file and in the room's record.` : (res?.result?.error || "The reward was not recorded."));
+      this.act(`Rewarding ${c.leader.name}…`, { action: "reward", note: note.value }, (res) => res?.result?.ok ? `${res.result.name || c.leader.name} has been rewarded. It is on their file and in the room's record.` : (res?.result?.error || "The reward was not recorded."));
     } }, `Reward ${c.leader.name}`) : null;
     const only = h("input", { type: "checkbox", checked: f.settings?.room_only ? true : null });
     only.addEventListener("change", () => this.act("Saving…", { action: "resize", room_only: only.checked },
