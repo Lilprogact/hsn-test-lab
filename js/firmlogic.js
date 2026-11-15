@@ -112,15 +112,20 @@ export function budgetCheck(firm, apiBudget, minutesBudget, minutesUsed, verb = 
     confirm: lines.length ? `${lines.join("\n\n")}\n\n${verb} anyway?` : "" };
 }
 
-/** The top strip for a firm that is started but cannot work, because a monthly budget as now set is used up ("" when
- *  it can work). It still looks in a few times a day, and every look is a short run on GitHub. */
+/** The top strip for a firm that is started while a monthly budget, as it is now set, is used up ("" when neither is).
+ *  It says what cannot run and why, that nothing is being spent, and what still goes on. As the engine has it
+ *  (scripts/guard.py, scripts/firm_schedule.py): the firm's own minutes budget used up stops its shifts on GitHub;
+ *  the AI budget used up stops all AI, and shifts that can still run go on with the Engine only; either way the
+ *  schedule drops to four looks a day, each a short run on GitHub. */
 export function stoppedLine(firm, minutesUsed) {
   const s = firm?.settings || {}, bc = budgetCheck(firm, s.monthly_api_budget_usd, s.monthly_minutes_budget, minutesUsed);
   if (!bc.apiStops && !bc.minutesStop) return "";
-  const why = [bc.minutesStop ? `its GitHub minutes for this month are used (${n0(bc.used)} of ${n0(s.monthly_minutes_budget)})` : "",
-    bc.apiStops ? `this month's AI budget is set to $${(+s.monthly_api_budget_usd).toFixed(2)} and $${bc.spent.toFixed(2)} is already spent` : ""].filter(Boolean).join(", and ");
-  return `Started, but nothing can run: ${why}. The firm only looks in four times a day until the new month or a higher budget, and each look uses a few GitHub minutes. Press Pause to stop that`
-    + (bc.apiStops ? `, and raise the AI budget in the CEO's office (How the firm works) if you want the Records Room to run.` : `. The Records Room can still run its own sessions.`);
+  const noAi = bc.apiStops ? `No money can be spent: this month's AI budget is set to $${(+s.monthly_api_budget_usd).toFixed(2)} and $${bc.spent.toFixed(2)} is already spent, `
+    + `so no AI runs (not the firm's agents, not the Records Room's thinking). ` : "";
+  const noShift = bc.minutesStop ? `On GitHub no shift can run before the new month${bc.apiStops ? " either" : ""}: the firm's GitHub minutes for this month are used (${n0(bc.used)} of ${n0(s.monthly_minutes_budget)}). `
+    + `The firm looks in four times a day meanwhile, and each look uses a couple of GitHub minutes (Pause stops that). ` : `The firm's shifts go on with the Engine only, four times a day. `;
+  const still = bc.apiStops ? "The Engine's own work needs no AI: see the Records Room page." : "The Records Room can still run its own sessions.";
+  return `Started. ${noAi}${noShift}${still}`;
 }
 
 /** Can the firm be started? It needs price history to test on; the AI key only decides whether agents can think. */

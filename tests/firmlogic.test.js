@@ -686,13 +686,17 @@ test("the budget boxes are for the whole month: a number that would stop the wor
   assert.equal(budgetCheck({ budget: {} }, 0, 0, 0).confirm, "", "a new firm with nothing spent is not warned about a zero");
   assert.equal(budgetCheck(f, 185.44, 2000, 0).apiStops, false); assert.equal(budgetCheck(f, 185.4322, 2000, 0).apiStops, true, "as the engine counts it: spent >= budget stops");
 
-  // the top strip for a firm that was started and cannot work
+  // the top strip for a firm that is started while a budget is used up
   assert.equal(stoppedLine(f, 1700), "");
-  const both = stoppedLine({ ...f, settings: { monthly_api_budget_usd: 6, monthly_minutes_budget: 1800 } }, 1838);
-  assert.equal(both, "Started, but nothing can run: its GitHub minutes for this month are used (1,838 of 1,800), and this month's AI budget is set to $6.00 and $185.43 is already spent. "
-    + "The firm only looks in four times a day until the new month or a higher budget, and each look uses a few GitHub minutes. Press Pause to stop that, "
-    + "and raise the AI budget in the CEO's office (How the firm works) if you want the Records Room to run.");
-  assert.match(stoppedLine(f, 1838), /Press Pause to stop that\. The Records Room can still run its own sessions\.$/);
+  const both = stoppedLine({ ...f, settings: { monthly_api_budget_usd: 6, monthly_minutes_budget: 1800 } }, 1840);
+  assert.equal(both, "Started. No money can be spent: this month's AI budget is set to $6.00 and $185.43 is already spent, so no AI runs (not the firm's agents, not the Records Room's thinking). "
+    + "On GitHub no shift can run before the new month either: the firm's GitHub minutes for this month are used (1,840 of 1,800). "
+    + "The firm looks in four times a day meanwhile, and each look uses a couple of GitHub minutes (Pause stops that). The Engine's own work needs no AI: see the Records Room page.");
+  assert.equal(stoppedLine(f, 1838), "Started. On GitHub no shift can run before the new month: the firm's GitHub minutes for this month are used (1,838 of 1,800). "
+    + "The firm looks in four times a day meanwhile, and each look uses a couple of GitHub minutes (Pause stops that). The Records Room can still run its own sessions.");
+  assert.equal(stoppedLine({ ...f, settings: { monthly_api_budget_usd: 6, monthly_minutes_budget: 2000 } }, 1840),
+    "Started. No money can be spent: this month's AI budget is set to $6.00 and $185.43 is already spent, so no AI runs (not the firm's agents, not the Records Room's thinking). "
+    + "The firm's shifts go on with the Engine only, four times a day. The Engine's own work needs no AI: see the Records Room page.");
 
   // the Records Room's strip: nothing left because the budget is set below what is spent
   const room = sentRoom(); room.budget = { firm_spent_usd: 185.4322, firm_budget_usd: 6 };
