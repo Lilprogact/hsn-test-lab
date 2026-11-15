@@ -92,6 +92,37 @@ export function nextShift(pace, schedule, now = new Date()) {
   return { at, text: `Next shift about ${hhmmUK(at)} UK (${wait})${slowed ? "; slower than the chosen pace because this month's GitHub minutes limit is used up" : ""}.` };
 }
 
+/**
+ * The two monthly budgets as they would be if saved now, against what has already been used this month. On 15 Nov 2026
+ * Start was pressed with 6 in the AI budget box: the box is the budget for the WHOLE month and $185.43 had been spent,
+ * so nothing could use AI any more, and the page only said "Started". `lines` is what to say beside the boxes;
+ * `confirm` is asked before the press is sent when a budget would stop the work ("" when neither does).
+ */
+export function budgetCheck(firm, apiBudget, minutesBudget, minutesUsed, verb = "Start") {
+  const spent = +firm?.budget?.firm_spent_usd || 0, api = +apiBudget, mins = +minutesBudget, used = +minutesUsed || 0;
+  const usd = (v) => `$${(+v).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const apiStops = Number.isFinite(api) && spent > 0 && spent >= api, minutesStop = Number.isFinite(mins) && used > 0 && used >= mins;
+  const lines = [];
+  if (apiStops) lines.push(`${usd(spent)} of AI is already spent this month. A budget of ${usd(api)} would stop ALL AI until the new month: the firm's shifts and the Records Room's sessions. `
+    + `The budget is for the whole month: to allow $6 more, for example, enter ${(spent + 6).toFixed(2)}.`);
+  if (minutesStop) lines.push(`The firm's GitHub minutes for this month are used (${n0(used)} of ${n0(mins)}), so no shift runs until the new month unless this number is raised `
+    + `(GitHub gives 2,000 free a month). The Records Room's sessions do not come under it.`);
+  return { spent, used, apiStops, minutesStop, lines,
+    usedLine: `Used so far this month: ${usd(spent)} of AI and ${n0(used)} GitHub minutes. Both boxes are for the whole month, not an extra amount.`,
+    confirm: lines.length ? `${lines.join("\n\n")}\n\n${verb} anyway?` : "" };
+}
+
+/** The top strip for a firm that is started but cannot work, because a monthly budget as now set is used up ("" when
+ *  it can work). It still looks in a few times a day, and every look is a short run on GitHub. */
+export function stoppedLine(firm, minutesUsed) {
+  const s = firm?.settings || {}, bc = budgetCheck(firm, s.monthly_api_budget_usd, s.monthly_minutes_budget, minutesUsed);
+  if (!bc.apiStops && !bc.minutesStop) return "";
+  const why = [bc.minutesStop ? `its GitHub minutes for this month are used (${n0(bc.used)} of ${n0(s.monthly_minutes_budget)})` : "",
+    bc.apiStops ? `this month's AI budget is set to $${(+s.monthly_api_budget_usd).toFixed(2)} and $${bc.spent.toFixed(2)} is already spent` : ""].filter(Boolean).join(", and ");
+  return `Started, but nothing can run: ${why}. The firm only looks in four times a day until the new month or a higher budget, and each look uses a few GitHub minutes. Press Pause to stop that`
+    + (bc.apiStops ? `, and raise the AI budget in the CEO's office (How the firm works) if you want the Records Room to run.` : `. The Records Room can still run its own sessions.`);
+}
+
 /** Can the firm be started? It needs price history to test on; the AI key only decides whether agents can think. */
 export function readiness(state, setup, firm) {
   const gold = state?.coverage?.symbols?.XAUUSD;
@@ -506,7 +537,11 @@ export function keepView(firm, config, chain, roomLive, busy = "", now = Date.no
   const left = Math.max(0, (+b.firm_budget_usd || 0) - (+b.firm_spent_usd || 0)), cost = +r?.last_think?.cost_usd || 0;
   const n = sessionsLeft(left, cost), running = !!roomLive?.running || /Records Room is in session/.test(busy || "");
   const each = cost > 0.2 ? `the last one cost $${cost.toFixed(2)}` : `about $${ROOM_SESSION.typicalUsd.toFixed(2)} each`;
-  const money = `$${left.toFixed(2)} of this month's AI money is left: enough for about ${n} session${n === 1 ? "" : "s"} (${each}).`;
+  // nothing left because the month's budget is set below what is already spent (not because the money has been used)
+  const setLow = (+b.firm_budget_usd || 0) > 0 && (+b.firm_spent_usd || 0) >= (+b.firm_budget_usd || 0) && (+b.firm_budget_usd || 0) < 0.9 * (+b.firm_spent_usd || 0);
+  const lowWhy = `This month's AI budget is set to $${(+b.firm_budget_usd || 0).toFixed(2)} and $${(+b.firm_spent_usd || 0).toFixed(2)} has already been spent, so nothing is left for a session. `
+    + `Raise the AI budget in the CEO's office (How the firm works) to more than what is spent: to allow $6 more, for example, enter ${((+b.firm_spent_usd || 0) + 6).toFixed(2)}.`;
+  const money = setLow ? lowWhy : `$${left.toFixed(2)} of this month's AI money is left: enough for about ${n} session${n === 1 ? "" : "s"} (${each}).`;
   const last = chain && chain.why ? `${chain.why}` : "";
   let line;
   if (on && running) line = `Running back to back. Session ${roomLive?.session ?? (r?.thinks || 0) + 1} is in progress; when it has saved, the next one starts by itself. ${money}`;
@@ -516,7 +551,7 @@ export function keepView(firm, config, chain, roomLive, busy = "", now = Date.no
   else if (running) line = "Not running back to back: the session in progress is the last one. Nothing more starts by itself.";
   else line = (last ? `${last} ` : "") + money;
   return { on, running, sessions: n, left, line, last, canStart: !!r?.open && !on && !running && n >= 1,
-    startWhy: !r?.open ? "The room is closed." : n < 1 ? `$${left.toFixed(2)} is left of this month's AI money, and a session needs at least $${ROOM_SESSION.minUsd.toFixed(2)}.` : "",
+    startWhy: !r?.open ? "The room is closed." : n < 1 ? (setLow ? lowWhy : `$${left.toFixed(2)} is left of this month's AI money, and a session needs at least $${ROOM_SESSION.minUsd.toFixed(2)}.`) : "",
     confirm: `Keep the Records Room running, back to back?\n\nA session starts now. When it has saved, the next one starts by itself, and so on, until this month's AI money is used `
       + `or you press Stop. ${money}\n\nAfter every session the six vote ONE strategy to the whole company. The Engine sends it only if it also made money on the months nobody has seen, `
       + `then tries its parts on every other agent's own best idea and keeps what improves and holds.\n\nEach session takes up to about ${ROOM_SESSION.keepMinutes} GitHub minutes. `

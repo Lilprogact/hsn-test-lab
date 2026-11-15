@@ -11,7 +11,7 @@ import { h, fill, card, stat, table, badge, field, select, input, money, num, pc
 import { Building, LEVEL_COLORS, BAR_COLORS, isRunning, coverageWorld } from "./building.js";
 import { from500View, auditWords, roomView, roomEntryView, roomLiveView, roomSessionCost, whyNotFree, keepView } from "./firmlogic.js";
 import { barChart } from "./charts.js";
-import { PACES, nextShift, readiness, scoreboard, eventLine, tokenHelp, shiftPlan, shiftPlanWords, minutesUsedThisMonth, minutesNote } from "./firmlogic.js";
+import { PACES, nextShift, readiness, scoreboard, eventLine, tokenHelp, shiftPlan, shiftPlanWords, minutesUsedThisMonth, minutesNote, budgetCheck, stoppedLine } from "./firmlogic.js";
 import { ChallengeReplay } from "./replay.js";
 
 /** Gold's price history as the engine holds it now: the Data check's file, or failing that the firm's own (which only
@@ -38,6 +38,18 @@ function planLine(pace, mins, fallbackMins) {
   };
   pace.addEventListener("change", paint); mins.addEventListener("input", paint); paint();
   return el;
+}
+
+/** Beside the two budget boxes: what has been used this month, and, as the boxes are typed in, whether a number in
+ *  them would stop the work (see budgetCheck). */
+function budgetLine(firm, api, mins, fallbackApi, fallbackMins) {
+  const used = h("p", { class: "muted small" }), warn = h("p", { class: "warnc", role: "status", hidden: true });
+  const paint = () => {
+    const bc = budgetCheck(firm, boxNumber(api, fallbackApi), boxNumber(mins, fallbackMins), minutesUsedThisMonth(state.minutes));
+    used.textContent = bc.usedLine; warn.textContent = bc.lines.join(" "); warn.hidden = !bc.lines.length;
+  };
+  api.addEventListener("input", paint); mins.addEventListener("input", paint); paint();
+  return h("div", { class: "stack budget-line" }, used, warn);
 }
 
 /** One labelled progress bar. `value` is the share of months (0-100) that meet the check. */
@@ -173,6 +185,9 @@ export class FirmView {
           + ` · ${c.challenges ?? 0} challenges (${c.challenges_passed ?? 0} passed)`);
         sub = h("div", {}, h("div", { class: "progress shift-bar", role: "progressbar", "aria-valuenow": Math.round(l.percent || 0), "aria-valuemin": 0, "aria-valuemax": 100 }, h("div", { style: `width:${Math.max(2, Math.min(100, l.percent || 0))}%` })),
           h("span", { class: "muted small" }, c.saved_at ? `Progress saved ${ukDateTime(c.saved_at)} UK (${c.saves} saves this shift)` : "Progress is saved every few minutes while it works."));
+      } else if (stoppedLine(f, minutesUsedThisMonth(state.minutes))) {
+        // started, but a monthly budget as now set is used up: say so plainly, and that Pause stops the looking in
+        line = h("span", { class: "warnc" }, stoppedLine(f, minutesUsedThisMonth(state.minutes)));
       } else {
         const nxt = nextShift(f.settings?.pace, this.schedule, new Date());
         line = `Working in shifts, ${PACES[f.settings?.pace]?.words || PACES["6h"].words}. Shift ${f.cycle || 0} ${f.last_cycle?.finished_at ? "finished " + ukDateTime(f.last_cycle.finished_at) + " UK" : "has not finished yet"}. `
@@ -191,14 +206,20 @@ export class FirmView {
     const mins = input("number", cfg.monthly_minutes_budget ?? 1200, { min: 0, step: 50, inputmode: "numeric" });
     const model = select([["claude-sonnet-5-5", "Claude Sonnet 5.5 (default)"], ["claude-haiku-5-5", "Claude Haiku 5.5 (more thinking turns per $)"], ["claude-opus-5-5", "Claude Opus 5.5"]], cfg.model || "claude-sonnet-5-5");
     const go = h("button", { class: "primary", onclick: async () => {
+      const apiNow = boxNumber(api, cfg.monthly_api_budget_usd ?? 60), minsNow = boxNumber(mins, cfg.monthly_minutes_budget ?? 1200);
+      const bc = budgetCheck(f, apiNow, minsNow, minutesUsedThisMonth(state.minutes), "Start");
+      if (bc.confirm && !confirm(bc.confirm)) return;                 // a budget that would stop the work is never sent unseen
       closeModal();
-      await this.act("Starting…", { action: "pause", paused: false, pace: pace.value, monthly_api_budget_usd: boxNumber(api, cfg.monthly_api_budget_usd ?? 60), monthly_minutes_budget: boxNumber(mins, cfg.monthly_minutes_budget ?? 1200), model: model.value },
-        (res) => res?.firm_schedule?.ok === false ? "Started, but its shifts could not be scheduled: " + (res.firm_schedule.note || "see the run on GitHub") : "Started. The first shift is starting now; the building comes alive within a couple of minutes.");
+      await this.act("Starting…", { action: "pause", paused: false, pace: pace.value, monthly_api_budget_usd: apiNow, monthly_minutes_budget: minsNow, model: model.value },
+        (res) => res?.firm_schedule?.ok === false ? "Started, but its shifts could not be scheduled: " + (res.firm_schedule.note || "see the run on GitHub")
+          : res?.result?.notes?.length ? "Started, but nothing will run yet. " + res.result.notes.join(" ")
+            : "Started. The first shift is starting now; the building comes alive within a couple of minutes.");
     } }, "Start the company");
     openModal(h("div", { class: "stack" }, h("h2", {}, f.cycle ? "Start HSN Capital again" : "Start HSN Capital"),
       h("p", {}, "The firm works in shifts on GitHub's machines. In a shift the agents read the research and the code, write their own rules and their own strategy code, the Engine tests everything on the real price history, teams meet, and challenges are taken on months nobody has tested on."),
       field("How often a shift runs", pace),
-      h("div", { class: "grid two" }, field("AI budget a month ($)", api, "for the agents' thinking"), field("GitHub minutes a month", mins, "2,000 are free")),
+      h("div", { class: "grid two" }, field("AI budget for the whole month ($)", api, "the total, not an extra amount"), field("GitHub minutes for the whole month", mins, "2,000 are free")),
+      budgetLine(f, api, mins, cfg.monthly_api_budget_usd ?? 60, cfg.monthly_minutes_budget ?? 1200),
       planLine(pace, mins, cfg.monthly_minutes_budget ?? 1200),
       h("p", { class: "help" }, "When the AI budget is used up the Engine carries on testing without AI: between the agents' thinking turns it tries small changes around each agent's best idea, so every shift does real work. At the minutes limit the firm stops until the new month (GitHub's free plan gives 2,000 minutes a month). Between shifts the building replays the last shift."),
       field("Model for every agent", model),
@@ -849,9 +870,15 @@ export class FirmView {
     const gate = h("input", { type: "checkbox", checked: cfg.win_rate_gate ? true : null });
     const search = h("input", { type: "checkbox", checked: (cfg.engine_search_per_cycle ?? 150) > 0 ? true : null });
     const ownCode = h("input", { type: "checkbox", checked: cfg.agent_strategies === false ? null : true });
-    const saveHow = h("button", { class: "secondary runs", onclick: () => this.act("Saving…", { action: "resize", pace: pace.value, monthly_api_budget_usd: boxNumber(apiBudget, cfg.monthly_api_budget_usd ?? 60), monthly_minutes_budget: boxNumber(minsBudget, cfg.monthly_minutes_budget ?? 1200),
-      win_rate_gate: gate.checked, engine_search_per_cycle: search.checked ? Math.max(1, cfg.engine_search_per_cycle || 150) : 0, agent_strategies: ownCode.checked },
-      () => "Saved. It applies from the next shift.") }, "Save how the firm works");
+    const saveHow = h("button", { class: "secondary runs", onclick: () => {
+      const apiNow = boxNumber(apiBudget, cfg.monthly_api_budget_usd ?? 60), minsNow = boxNumber(minsBudget, cfg.monthly_minutes_budget ?? 1200);
+      const bc = budgetCheck(f, apiNow, minsNow, minutesUsedThisMonth(state.minutes), "Save");
+      if (bc.confirm && !confirm(bc.confirm)) return;
+      this.act("Saving…", { action: "resize", pace: pace.value, monthly_api_budget_usd: apiNow, monthly_minutes_budget: minsNow,
+        win_rate_gate: gate.checked, engine_search_per_cycle: search.checked ? Math.max(1, cfg.engine_search_per_cycle || 150) : 0, agent_strategies: ownCode.checked },
+      (res) => res?.result?.notes?.length ? "Saved. " + res.result.notes.join(" ") : "Saved. It applies from the next shift and to the Records Room's next session.");
+    } }, "Save how the firm works");
+    this.ceoBudgetLine = budgetLine(f, apiBudget, minsBudget, cfg.monthly_api_budget_usd ?? 60, cfg.monthly_minutes_budget ?? 1200);
     const targets = [1, 2, 3, 4, 5].map((k) => `${k}: ${f.floors?.[String(k)]?.challenge?.target?.win_pct ?? "—"}%`).join(" · ");
     this.ceoNote = h("p", { class: "muted small" }, "Start and Pause are at the top of the page.");
     return (this.ceoCard = card("CEO's office", h("p", { class: "help" }, "Every answer comes from the person's real file (Engine numbers only). A commendation lifts a mood and never skips a check. Nothing goes to the VPS, a demo account or live trading from here."),
@@ -861,7 +888,8 @@ export class FirmView {
           field("Head of Trading memo", memoSel), h("div", { class: "row" }, decision, note, decide), this.ceoNote)),
       h("h3", {}, "How the firm works"),
       h("div", { class: "stack" }, field("How often a shift runs", pace),
-        h("div", { class: "grid two" }, field("AI budget a month ($)", apiBudget, "for the agents' thinking"), field("GitHub minutes a month", minsBudget, "2,000 are free")),
+        h("div", { class: "grid two" }, field("AI budget for the whole month ($)", apiBudget, "the total, not an extra amount"), field("GitHub minutes for the whole month", minsBudget, "2,000 are free")),
+        this.ceoBudgetLine,
         planLine(pace, minsBudget, cfg.monthly_minutes_budget ?? 1200),
         h("p", { class: "help" }, "When the AI budget is used up the Engine carries on testing without AI. At the minutes limit the firm stops until the new month (GitHub's free plan gives 2,000 minutes a month)."),
         f.last_cycle?.max_seconds && f.last_cycle?.seconds != null ? h("p", { class: "muted small" }, `The last shift (shift ${f.cycle}) was given ${num(f.last_cycle.max_seconds / 60, 0)} minutes to work and took ${num(f.last_cycle.seconds / 60, 0)}.`) : null,

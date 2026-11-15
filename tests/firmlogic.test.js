@@ -2,7 +2,7 @@
 // the ticker's lines and the token help. Every figure in these tests is made up; none is shown on the site.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { from500View, auditWords, roomView, roomEntryView, roomAuditWords, madeWords, planShort, roomLiveView, whyNotFree, roomSessionCost, ROOM_SESSION, sentView, keepView, sessionsLeft, KEEP_BLOCKS_RUNS } from "../js/firmlogic.js";
+import { from500View, auditWords, roomView, roomEntryView, roomAuditWords, madeWords, planShort, roomLiveView, whyNotFree, roomSessionCost, ROOM_SESSION, sentView, keepView, sessionsLeft, KEEP_BLOCKS_RUNS, budgetCheck, stoppedLine } from "../js/firmlogic.js";
 import { PACES, nextShift, readiness, scoreboard, eventLine, tokenHelp, MIN_TRADES_FOR_WIN_RANK, SHIFT, shiftsLeft, shiftPlan, shiftPlanWords, minutesUsedThisMonth, minutesNote, lookWords, CODE_WORDS } from "../js/firmlogic.js";
 
 test("the four paces match the engine's schedules", () => {
@@ -665,3 +665,43 @@ test("back to back: how many sessions the money pays for, what the strip says, a
   assert.match(KEEP_BLOCKS_RUNS, /^The Records Room is running back to back, so this was not started/); assert.match(KEEP_BLOCKS_RUNS, /Stop after this session/);
 });
 
+
+test("the budget boxes are for the whole month: a number that would stop the work is said before it is sent (15 Nov 2026)", () => {
+  // Start was pressed with 6 in the AI budget box while $185.43 had been spent: nothing could use AI any more
+  const f = { budget: { firm_spent_usd: 185.4322, firm_budget_usd: 200 }, settings: { monthly_api_budget_usd: 200, monthly_minutes_budget: 1800 } };
+  const six = budgetCheck(f, 6, 2000, 1838);
+  assert.equal(six.apiStops, true); assert.equal(six.minutesStop, false);
+  assert.equal(six.lines[0], "$185.43 of AI is already spent this month. A budget of $6.00 would stop ALL AI until the new month: the firm's shifts and the Records Room's sessions. "
+    + "The budget is for the whole month: to allow $6 more, for example, enter 191.43.");
+  assert.match(six.confirm, /Start anyway\?$/); assert.match(budgetCheck(f, 6, 2000, 1838, "Save").confirm, /Save anyway\?$/);
+  assert.equal(six.usedLine, "Used so far this month: $185.43 of AI and 1,838 GitHub minutes. Both boxes are for the whole month, not an extra amount.");
+  // the firm's own minutes budget is used: no shift runs, whatever the AI budget
+  const mins = budgetCheck(f, 200, 1800, 1838);
+  assert.equal(mins.apiStops, false); assert.equal(mins.minutesStop, true);
+  assert.equal(mins.lines[0], "The firm's GitHub minutes for this month are used (1,838 of 1,800), so no shift runs until the new month unless this number is raised (GitHub gives 2,000 free a month). The Records Room's sessions do not come under it.");
+  assert.equal(budgetCheck(f, 6, 1800, 1838).lines.length, 2);
+  // nothing to say, nothing to ask
+  const fine = budgetCheck(f, 200, 2000, 1838);
+  assert.deepEqual([fine.apiStops, fine.minutesStop, fine.lines.length, fine.confirm], [false, false, 0, ""]);
+  assert.equal(budgetCheck({ budget: {} }, 0, 0, 0).confirm, "", "a new firm with nothing spent is not warned about a zero");
+  assert.equal(budgetCheck(f, 185.44, 2000, 0).apiStops, false); assert.equal(budgetCheck(f, 185.4322, 2000, 0).apiStops, true, "as the engine counts it: spent >= budget stops");
+
+  // the top strip for a firm that was started and cannot work
+  assert.equal(stoppedLine(f, 1700), "");
+  const both = stoppedLine({ ...f, settings: { monthly_api_budget_usd: 6, monthly_minutes_budget: 1800 } }, 1838);
+  assert.equal(both, "Started, but nothing can run: its GitHub minutes for this month are used (1,838 of 1,800), and this month's AI budget is set to $6.00 and $185.43 is already spent. "
+    + "The firm only looks in four times a day until the new month or a higher budget, and each look uses a few GitHub minutes. Press Pause to stop that, "
+    + "and raise the AI budget in the CEO's office (How the firm works) if you want the Records Room to run.");
+  assert.match(stoppedLine(f, 1838), /Press Pause to stop that\. The Records Room can still run its own sessions\.$/);
+
+  // the Records Room's strip: nothing left because the budget is set below what is spent
+  const room = sentRoom(); room.budget = { firm_spent_usd: 185.4322, firm_budget_usd: 6 };
+  const kv = keepView(room, { firm: {} }, null, null);
+  assert.equal(kv.canStart, false); assert.equal(kv.sessions, 0);
+  assert.equal(kv.line, "This month's AI budget is set to $6.00 and $185.43 has already been spent, so nothing is left for a session. "
+    + "Raise the AI budget in the CEO's office (How the firm works) to more than what is spent: to allow $6 more, for example, enter 191.43.");
+  assert.equal(kv.startWhy, kv.line);
+  // the money really used up (budget 200, spent 199.50) keeps the ordinary words
+  const used = sentRoom(); used.budget = { firm_spent_usd: 199.5, firm_budget_usd: 200 };
+  assert.match(keepView(used, {}, null, null).line, /^\$0\.50 of this month's AI money is left/);
+});
