@@ -403,6 +403,7 @@ export function roomView(firm) {
     "Left to run": s.tradable && long ? gbp0(long.end) : "—" }; });
   const lead = r.leader;
   const t = r.together;
+  const held = (r.meetings || []).slice().reverse().find((m) => (m.learned || []).length) || null;
   const rewards = (r.rewards || []).slice().reverse().map((x) => ({ at: x.at, agent: x.agent,
     line: `${x.name} was rewarded for ${x.idea} with ${x.plan_words}: ${madeWords(x.made_unseen)} on the ${x.unseen_months} months nobody had seen (shift ${x.cycle}).${x.note ? ` "${x.note}"` : ""}` }));
   return {
@@ -429,7 +430,11 @@ export function roomView(firm) {
       credit: (t.credit || []).map(nameOf),
       beats: rows.filter((x) => x.tradable).every((x) => (t.unseen?.made ?? -Infinity) > (r.members[x.id]?.entry?.unseen?.made ?? -Infinity)) } : null,
     mixes: (r.mixes || []).length,
-    learned: r.learned || [], meetings: (r.meetings || []).slice().reverse(), rewards,
+    // What the room carries into everyone's own work: the lessons of its newest meeting that wrote any (a meeting that keeps
+    // the ideas apart writes none), shown with the Engine's corrections to what was said at THAT meeting.
+    learned: held ? held.learned : (r.learned || []), learnedFrom: held ? (held.think != null ? `session ${held.think}` : `shift ${held.cycle}`) : "",
+    learnedCorrections: held ? (held.corrections || []).filter((x) => String(x || "").trim()) : [],
+    meetings: (r.meetings || []).slice().reverse(), rewards,
     thinks: r.thinks || 0, think, meeting, seats: meeting ? meeting.seats : ids.map(seat),
   };
 }
@@ -476,6 +481,18 @@ function doingWords(m) {
  * of its three parts it is in, what each of the six is doing or has brought, and who has said what at the table.
  * Null when the live file is not a session of the room. `running` is false once it has finished or the file is stale.
  */
+/** Why a button that starts a run on GitHub may not be pressed now ("" when it may). One thing at a time: a second run
+ *  only queues behind the first on GitHub, costs minutes and, for a session of the room, real money. `busy` is what this
+ *  page has in flight; `roomLive` is the room's live view (a session somebody started, here or elsewhere). */
+export function whyNotFree(busy, roomLive) {
+  if (busy) {
+    const what = String(busy).replace(/…/g, "").replace(/\s*\(.*\)\s*$/, "").trim();
+    return `One thing at a time. The last thing you pressed is still running on GitHub: ${what}. Wait for it to finish, then press again.`;
+  }
+  if (roomLive?.running) return `A session of the Records Room is running now (session ${roomLive.session}: ${roomLive.phaseWords}). Wait for it to finish, then press again. You can watch it on the Records Room page.`;
+  return "";
+}
+
 export function roomLiveView(live, firm, now = Date.now()) {
   const lr = live?.room, r = firm?.room;
   if (!lr || !r) return null;

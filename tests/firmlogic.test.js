@@ -2,7 +2,7 @@
 // the ticker's lines and the token help. Every figure in these tests is made up; none is shown on the site.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { from500View, auditWords, roomView, roomEntryView, roomAuditWords, madeWords, planShort, roomLiveView, roomSessionCost, ROOM_SESSION } from "../js/firmlogic.js";
+import { from500View, auditWords, roomView, roomEntryView, roomAuditWords, madeWords, planShort, roomLiveView, whyNotFree, roomSessionCost, ROOM_SESSION } from "../js/firmlogic.js";
 import { PACES, nextShift, readiness, scoreboard, eventLine, tokenHelp, MIN_TRADES_FOR_WIN_RANK, SHIFT, shiftsLeft, shiftPlan, shiftPlanWords, minutesUsedThisMonth, minutesNote, lookWords, CODE_WORDS } from "../js/firmlogic.js";
 
 test("the four paces match the engine's schedules", () => {
@@ -489,6 +489,35 @@ test("the room's last session: who thought alone, what each brought and said in 
   const plain = roomView(roomFirm());
   assert.equal(plain.think, null); assert.equal(plain.meeting, null, "a meeting from before the room voted has no voices to show");
   assert.equal(plain.seats[0].alone, "Has not had a turn of its own in the room yet.");
+});
+
+test("what the room carries: the lessons of its newest meeting that wrote any, with the Engine's corrections to that meeting", () => {
+  const merged = roomView(sessionRoom("merge"));
+  assert.deepEqual([merged.learned, merged.learnedFrom, merged.learnedCorrections], [["A single-target exit, so a small account can open it."], "session 3", ["I15301 made £9,696, not £23,659."]]);
+  // a later meeting keeps the ideas apart and writes no lessons: the earlier lessons still stand, and their corrections stay with them
+  const f = sessionRoom("merge");
+  f.room.meetings.push({ cycle: 100, at: "2026-11-15T14:52:41Z", think: 4, decision: "keep_separate", votes: { merge: 1, keep_separate: 5, silent: 0 }, voices: f.room.meetings[1].voices, brought: {}, learned: [] });
+  f.room.learned = null;                                    // as after "Pick the six again" on 15 Nov 2026, which dropped the room's own copy
+  const later = roomView(f);
+  assert.equal(later.meeting.session, 4); assert.deepEqual(later.meeting.learned, []); assert.deepEqual(later.meeting.corrections, []);
+  assert.deepEqual([later.learned, later.learnedFrom, later.learnedCorrections], [["A single-target exit, so a small account can open it."], "session 3", ["I15301 made £9,696, not £23,659."]]);
+  // no meeting has written lessons: whatever the room's record itself holds, and nothing to correct
+  const apart = roomView(sessionRoom("keep_separate"));
+  assert.deepEqual([apart.learned, apart.learnedFrom, apart.learnedCorrections], [["A single-target exit, so a small account can open it."], "", []]);
+});
+
+test("one thing at a time: a second press is refused while a run is in flight, and says what is still running", () => {
+  assert.equal(whyNotFree("", null), ""); assert.equal(whyNotFree(undefined, undefined), ""); assert.equal(whyNotFree("", { running: false, session: 2 }), "");
+  assert.equal(whyNotFree("The Records Room's Engine session is running… (about ten minutes)", null),
+    "One thing at a time. The last thing you pressed is still running on GitHub: The Records Room's Engine session is running. Wait for it to finish, then press again.");
+  assert.equal(whyNotFree("The Records Room is opening… (the Engine is working; about ten minutes)", null),
+    "One thing at a time. The last thing you pressed is still running on GitHub: The Records Room is opening. Wait for it to finish, then press again.");
+  assert.match(whyNotFree("Saving…", { running: true, session: 2, phaseWords: "x" }), /^One thing at a time\. The last thing you pressed is still running on GitHub: Saving\. /, "what this page has in flight comes first");
+  // a session somebody started that this page does not have in flight (the page was reloaded, or it was started on another device)
+  const f = sessionRoom(), now = Date.parse("2026-11-15T13:20:30Z");
+  const live = roomLiveView({ mode: "firm", cycle: 100, stage: "The Records Room: each of the six is thinking on its own", percent: 30, updated_at: "2026-11-15T13:20:00Z", elapsed_s: 185,
+    room: { session: 4, phase: "thinking", members: {}, voices: {}, votes: null } }, f, now);
+  assert.equal(whyNotFree("", live), "A session of the Records Room is running now (session 4: Alone: each of the six is thinking on its own). Wait for it to finish, then press again. You can watch it on the Records Room page.");
 });
 
 test("a session of the room while it runs: which part it is in, what each of the six is doing, who has said what", () => {

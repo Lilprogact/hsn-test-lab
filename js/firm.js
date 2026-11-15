@@ -9,7 +9,7 @@ import { state, startRun, liveText } from "./app.js";
 import { ukDateTime } from "./clock.js";
 import { h, fill, card, stat, table, badge, field, select, input, money, num, pct, signed, openModal, closeModal, mdLite } from "./ui.js";
 import { Building, LEVEL_COLORS, BAR_COLORS, isRunning, coverageWorld } from "./building.js";
-import { from500View, auditWords, roomView, roomEntryView, roomLiveView, roomSessionCost } from "./firmlogic.js";
+import { from500View, auditWords, roomView, roomEntryView, roomLiveView, roomSessionCost, whyNotFree } from "./firmlogic.js";
 import { barChart } from "./charts.js";
 import { PACES, nextShift, readiness, scoreboard, eventLine, tokenHelp, shiftPlan, shiftPlanWords, minutesUsedThisMonth, minutesNote } from "./firmlogic.js";
 import { ChallengeReplay } from "./replay.js";
@@ -171,6 +171,7 @@ export class FirmView {
       }
     }
     this.controlEl.replaceChildren(button, h("div", { class: "control-text" }, h("p", { class: "control-line" }, line), sub));
+    this.root.classList.toggle("is-busy", !!this.busy || roomRunning);       // the page's other buttons are dimmed while a run is in flight
   }
 
   startDialog() {
@@ -196,20 +197,41 @@ export class FirmView {
   }
 
   pause() {
+    if (!this.free()) return;
     if (!confirm("Pause HSN Capital? No more shifts start until you press Start. A shift that is running now finishes first. Nothing is lost.")) return;
     this.act("Pausing…", { action: "pause", paused: true }, () => "Paused. No shifts are scheduled and a paused firm uses no GitHub minutes.");
   }
 
-  /** One CEO action through the Run workflow, with the strip saying what is happening. */
+  /** One thing at a time. Every button on this page that starts a run on GitHub asks here first. While one run is in
+   *  flight a second press is refused, and says what is still running. On 15 Nov 2026 three buttons were pressed in
+   *  five minutes: three runs queued up on GitHub, and when the second finished, its line was printed over the third
+   *  one's "in session" notice, so the page looked dead while the six were thinking. `room`: also refuse while a
+   *  session of the Records Room is running that this page did not start (after a reload, or from another device). */
+  free({ room = false } = {}) {
+    const why = whyNotFree(this.busy, room ? roomLiveView(this.live, this.firm) : null);
+    if (!why) return true;
+    this.say(why, "warnc");
+    // said where it cannot be missed: the button that was pressed may be far down the page from the strip at the top
+    openModal(h("div", { class: "stack" }, h("h2", {}, "One thing at a time"), h("p", {}, why.replace(/^One thing at a time\.\s*/, "")),
+      h("p", { class: "muted small" }, "Nothing was sent. A second run would only wait in GitHub's queue behind the first, and it costs GitHub minutes (and, for a session of the room, AI money)."),
+      h("div", { class: "row" }, h("button", { class: "primary", onclick: () => closeModal() }, "OK"))));
+    return false;
+  }
+
+  /** One CEO action through the Run workflow, with the strip saying what is happening. Resolves to false when it was
+   *  not started because something else is still running. */
   async act(label, payload, done) {
-    this.busy = label; this.note = ""; this.paintControl();
+    if (!this.free({ room: payload?.action === "room" || payload?.action === "reward" })) return false;
+    this.busy = label; this.note = ""; this.say(""); this.paintControl();          // the line left by the last thing that finished goes
     try {
       const { result } = await startRun("ceo", payload, () => {}, { prefix: "ceo" });
       this.busy = "";
+      if (payload?.action === "room") this.roomReplay = null;        // the room's replay file is its latest session's: fetch it afresh
       await this.load();
       this.say(done(result), result?.firm_schedule?.ok === false ? "warnc" : "good");
       setTimeout(() => this.refreshLive(), 30000);
     } catch (e) { this.busy = ""; this.paintControl(); this.say(e.message, "bad"); }
+    return true;
   }
 
   say(text, cls = "muted") { if (this.sayEl) { this.sayEl.textContent = text || ""; this.sayEl.className = `control-note ${cls}`; this.sayEl.hidden = !text; } }
@@ -371,8 +393,12 @@ export class FirmView {
   roomPage() {
     const f = this.firm, v = roomView(f);
     const cost = "Engine only: no AI is used. It is a run on GitHub of about ten minutes.";
-    const open = (again) => h("button", { class: again ? "secondary" : "primary", onclick: () => {
-      if (again && !confirm("Pick the six again from the records as they stand now? The room's work so far stays in the library; its standings start again.")) return;
+    const open = (again) => h("button", { class: again ? "secondary runs" : "primary runs", onclick: () => {
+      if (!this.free({ room: true })) return;
+      if (again && !confirm("Pick the six again? This is NOT how you run the room: for that, use \"Run a session\" at the top of this page.\n\n"
+        + "It starts the room afresh from the records as they stand now. The six are chosen again (they can change), each one's pinned record is picked again, "
+        + "and the list of strategies the Engine has found around each of them is emptied, so the growth challenge's order starts again.\n\n"
+        + "The room's meetings, minutes, lessons and rewards stay. Engine only: no AI, about 4 GitHub minutes.")) return;
       this.act("The Records Room is opening… (the Engine is working; about ten minutes)", { action: "room", do: "open" }, (res) => this.roomSaid(res, "The Records Room is open."));
     } }, again ? "Pick the six again" : "Open the Records Room");
     if (!v) {
@@ -387,7 +413,8 @@ export class FirmView {
     this.roomLiveEl = h("div", { class: "room-live" });
     this.roomNote = h("p", { class: "muted small", role: "status" });
     const price = roomSessionCost(f, minutesUsedThisMonth(state.minutes));
-    const think = h("button", { class: "primary", disabled: v.open && price.ok ? null : true, onclick: () => {
+    const think = h("button", { class: "primary runs", disabled: v.open && price.ok ? null : true, onclick: () => {
+      if (!this.free({ room: true })) return;
       if (!confirm("Run a session of the Records Room now?\n\nEach of its six thinks alone first (real AI, with the Engine's research tools). Then they meet, see each other's work, and each says for itself whether it wants ONE joint strategy. "
         + `The Engine counts the votes, tests whatever they put forward and judges the growth challenge.\n\nIt costs: ${price.line}\n\nThe firm itself stays ${f.paused ? "paused" : "as it is"}: only the room's six work.`)) return;
       this.act("The Records Room is in session…", { action: "room", do: "think" }, (res) => this.roomThought(res));
@@ -439,15 +466,17 @@ export class FirmView {
     const rows = c.rows.map((r) => ({ ...r, Who: h("button", { class: "link", type: "button", onclick: () => this.openAgent(r.id) }, r.leader ? "★ " : "", r.Who),
       Entry: r.tradable ? h("button", { class: "link", type: "button", onclick: () => this.openRoomEntry(r.id) }, r.Entry) : h("span", { class: "muted" }, r.Entry) }));
     const note = input("text", "", { placeholder: "a word for them (optional)", maxlength: 200 });
-    const reward = c.leader ? h("button", { class: "primary", disabled: c.leader.canReward ? null : true, onclick: () => {
+    const reward = c.leader ? h("button", { class: "primary runs", disabled: c.leader.canReward ? null : true, onclick: () => {
+      if (!this.free({ room: true })) return;
       if (!confirm(`Reward ${c.leader.name} as the best in the growth challenge? It goes on their record and lifts their mood; it never skips a check.`)) return;
       this.act(`Rewarding ${c.leader.name}…`, { action: "reward", note: note.value }, (res) => res?.result?.ok ? `${res.result.name || c.leader.name} has been rewarded. It is on their file and in the room's record.` : (res?.result?.error || "The reward was not recorded."));
     } }, `Reward ${c.leader.name}`) : null;
     const only = h("input", { type: "checkbox", checked: f.settings?.room_only ? true : null });
-    only.addEventListener("change", () => this.act("Saving…", { action: "resize", room_only: only.checked },
-      () => only.checked ? "Saved. From the next shift only the room's six think and only the room works: shorter shifts, and the whole AI budget goes to the room." : "Saved. From the next shift the whole firm works again; the room's six still think first."));
-    const work = h("button", { class: "secondary", onclick: () => this.act("The Records Room's Engine session is running… (about ten minutes)", { action: "room", do: "work" }, (res) => this.roomSaid(res, "The room's Engine session is done.")) }, "Run the room's Engine work now");
-    const close = h("button", { class: "secondary", onclick: () => { if (confirm("Close the Records Room? Its six carry on with their ordinary work. Everything the room did stays on record, and you can open it again.")) this.act("Closing the room…", { action: "room", do: "close" }, () => "The Records Room is closed."); } }, "Close the room");
+    only.addEventListener("change", async () => { const ok = await this.act("Saving…", { action: "resize", room_only: only.checked },
+      () => only.checked ? "Saved. From the next shift only the room's six think and only the room works: shorter shifts, and the whole AI budget goes to the room." : "Saved. From the next shift the whole firm works again; the room's six still think first.");
+      if (ok === false) only.checked = !only.checked; });                 // it was not sent: the box goes back to what is saved
+    const work = h("button", { class: "secondary runs", onclick: () => this.act("The Records Room's Engine session is running… (about ten minutes)", { action: "room", do: "work" }, (res) => this.roomSaid(res, "The room's Engine session is done.")) }, "Run the room's Engine work now");
+    const close = h("button", { class: "secondary runs", onclick: () => { if (!this.free({ room: true })) return; if (confirm("Close the Records Room? Its six carry on with their ordinary work. Everything the room did stays on record, and you can open it again.")) this.act("Closing the room…", { action: "room", do: "close" }, () => "The Records Room is closed."); } }, "Close the room");
     const last = v.last ? `Its last Engine session (${ukDateTime(v.last.at)} UK) tested ${num(v.last.tested, 0)} new strategies, found ${num(v.last.found_in_library, 0)} more already in the library and made ${num(v.last.mixes, 0)} mixes.` : "It has not had an Engine session yet.";
     return h("div", { class: "stack" }, atWork, lastMeeting,
       card(h("span", {}, v.name, " ", v.open ? badge("open", "good") : badge("closed", "warn"), " ", badge(`${v.thinks} session${v.thinks === 1 ? "" : "s"} of thinking and meeting`), " ", badge(`${v.sessions} Engine session${v.sessions === 1 ? "" : "s"}`)),
@@ -465,7 +494,9 @@ export class FirmView {
           h("div", { class: "row" }, h("button", { class: "secondary small", onclick: () => this.openRoomEntry("together") }, "See the joint entry")))
           : h("p", { class: "muted" }, "No joint strategy that a small account can open yet."),
         h("p", { class: "help" }, `The room's joint entry in the growth challenge is the Engine's choice, on the practice months, among everything the room has put together: the Engine's own mixes of every pips record with every win-rate record (${v.mixes} mixes: one's strategy with the other's filters, exit, trade limits or charts), the joint strategy the six wrote down when they voted for one, and each member's own proposal for it.`),
-        v.learned.length ? h("div", {}, h("h3", {}, "What the room agreed to carry into everyone's own work"), h("ul", { class: "rules" }, ...v.learned.map(li))) : null,
+        v.learned.length ? h("div", {}, h("h3", {}, `What the room agreed to carry into everyone's own work${v.learnedFrom ? ` (at its meeting of ${v.learnedFrom})` : ""}`), h("ul", { class: "rules" }, ...v.learned.map(li)),
+          v.learnedCorrections.length ? h("div", {}, h("p", { class: "muted small" }, "The Engine's corrections to what was said at that meeting. The six are given these together with the lessons:"),
+            h("ul", { class: "rules" }, ...v.learnedCorrections.map(li))) : null) : null,
         v.meetings.length ? h("div", { class: "row" }, ...v.meetings.filter((m) => m.minutes).slice(0, 6).map((m) => h("button", { class: "secondary small", onclick: () => this.openDoc(m.minutes) }, m.think ? `Minutes, session ${m.think}` : `Minutes, shift ${m.cycle}`))) : h("p", { class: "muted small" }, "The room has not met yet. Run a session above: the six think alone, then meet.")),
       card("Running the room", h("p", { class: "help" }, "A session (the button at the top) is the whole thing in one go: the six think alone, meet, and the Engine tests and judges. It works whether the firm is running or paused. In the firm's own shifts the room's six also think first and the room meets every fourth shift. You can also run only the Engine's part, which uses no AI."),
         v.open ? h("label", { class: "chip wide" }, only, "Only the room works: nobody else thinks and the rest of the firm's shift is skipped (shorter shifts; the whole AI budget goes to the room's six)") : null,
@@ -518,6 +549,8 @@ export class FirmView {
       if (isRunning(this.live)) { note("A session is running now: the picture is live."); return; }
       if (!state.animations) { note("Movement is switched off (Company page, Replay options), so there is nothing to play."); return; }
       note("Fetching the session's real events…");
+      const want = roomView(this.firm)?.think?.session;
+      if (this.roomReplay && want != null && this.roomReplay.room_session !== want) this.roomReplay = null;     // a newer session has run since it was fetched
       const rep = this.roomReplay || (this.roomReplay = await gh.getJson(state.token, state.owner, "firm/replays/room.json"));
       if (!rep?.events?.length) { note("That session left no events to play."); return; }
       if (this.page !== "room" || isRunning(this.live)) return;
@@ -688,23 +721,26 @@ export class FirmView {
     const who = select(people, "M5");
     const q = h("textarea", { placeholder: "Ask anything: 'what did you test this week and what did the numbers say?'" });
     const answer = h("div", { class: "summary-text" });
-    const ask = h("button", { class: "primary", onclick: async () => {
+    const ask = h("button", { class: "primary runs", onclick: async () => {
+      if (!this.free()) return;
       answer.textContent = "Asking… (a run on GitHub; usually 1-2 minutes)";
+      this.busy = "Asking…"; this.paintControl();
       try {
         const { result } = await startRun("ceo", { action: "ask", who: who.value, question: q.value }, () => {}, { prefix: "ask" });
         const r = result.result || {};
         fill(answer, h("p", {}, h("b", {}, r.who?.name || who.value), ": ", r.answer || r.error || "(no answer)"), r.unverified_numbers_flagged?.length ? h("p", { class: "warnc" }, `Numbers not found in their file were flagged: ${r.unverified_numbers_flagged.join(", ")}`) : null);
       } catch (e) { answer.textContent = e.message; }
+      this.busy = ""; this.paintControl();
     } }, "Ask");
     const focus = input("text", f.monthly_focus || "", { placeholder: "e.g. sideways gold, NAS100 at the London open" });
-    const setFocus = h("button", { class: "secondary", onclick: () => this.ceo("focus", { focus: focus.value }) }, "Set monthly focus");
+    const setFocus = h("button", { class: "secondary runs", onclick: () => this.ceo("focus", { focus: focus.value }) }, "Set monthly focus");
     const agentSel = select(Object.entries(f.agents || {}).map(([id, a]) => [id, a.name]), Object.keys(f.agents || {})[0]);
-    const commend = h("button", { class: "secondary", onclick: () => this.ceo("commend", { agent_id: agentSel.value, note: "commendation from the CEO" }) }, "Commend");
+    const commend = h("button", { class: "secondary runs", onclick: () => this.ceo("commend", { agent_id: agentSel.value, note: "commendation from the CEO" }) }, "Commend");
     const openFile = h("button", { class: "primary", onclick: () => this.openAgent(agentSel.value) }, "Open their file");
     const memoSel = select((f.memos || []).map((m) => [m.replace(".md", ""), m]), (f.memos || []).slice(-1)[0]?.replace(".md", ""));
     const decision = select([["approve", "Approve"], ["reject", "Reject"], ["question", "Question"]], "approve");
     const note = input("text", "", { placeholder: "note or question" });
-    const decide = h("button", { class: "secondary", onclick: () => this.ceo("memo", { week: memoSel.value, decision: decision.value, note: note.value }) }, "Record decision");
+    const decide = h("button", { class: "secondary runs", onclick: () => this.ceo("memo", { week: memoSel.value, decision: decision.value, note: note.value }) }, "Record decision");
     const cfg = f.settings || {};
     const pace = select(Object.entries(PACES).map(([k, v]) => [k, `${v.label} — ${v.note}`]), cfg.pace || "6h");
     const apiBudget = input("number", cfg.monthly_api_budget_usd ?? 60, { min: 0, step: 5, inputmode: "decimal" });
@@ -712,7 +748,7 @@ export class FirmView {
     const gate = h("input", { type: "checkbox", checked: cfg.win_rate_gate ? true : null });
     const search = h("input", { type: "checkbox", checked: (cfg.engine_search_per_cycle ?? 150) > 0 ? true : null });
     const ownCode = h("input", { type: "checkbox", checked: cfg.agent_strategies === false ? null : true });
-    const saveHow = h("button", { class: "secondary", onclick: () => this.act("Saving…", { action: "resize", pace: pace.value, monthly_api_budget_usd: boxNumber(apiBudget, cfg.monthly_api_budget_usd ?? 60), monthly_minutes_budget: boxNumber(minsBudget, cfg.monthly_minutes_budget ?? 1200),
+    const saveHow = h("button", { class: "secondary runs", onclick: () => this.act("Saving…", { action: "resize", pace: pace.value, monthly_api_budget_usd: boxNumber(apiBudget, cfg.monthly_api_budget_usd ?? 60), monthly_minutes_budget: boxNumber(minsBudget, cfg.monthly_minutes_budget ?? 1200),
       win_rate_gate: gate.checked, engine_search_per_cycle: search.checked ? Math.max(1, cfg.engine_search_per_cycle || 150) : 0, agent_strategies: ownCode.checked },
       () => "Saved. It applies from the next shift.") }, "Save how the firm works");
     const targets = [1, 2, 3, 4, 5].map((k) => `${k}: ${f.floors?.[String(k)]?.challenge?.target?.win_pct ?? "—"}%`).join(" · ");
@@ -736,15 +772,19 @@ export class FirmView {
   }
 
   async ceo(action, payload) {
+    if (!this.free()) return;
+    this.busy = "Sending…"; this.paintControl();
     try {
       if (this.ceoNote) this.ceoNote.textContent = "Sending… (a run on GitHub; usually about a minute)";
       await startRun("ceo", { action, ...payload }, () => {}, { prefix: "ceo" });
+      this.busy = "";
       await this.load();
       this.say("Done.", "good");
-    } catch (e) { if (this.ceoNote) { this.ceoNote.textContent = e.message; this.ceoNote.className = "bad"; } }
+    } catch (e) { this.busy = ""; this.paintControl(); if (this.ceoNote) { this.ceoNote.textContent = e.message; this.ceoNote.className = "bad"; } }
   }
 
   async runCycle(first = false) {
+    if (!first && !this.free({ room: true })) return;
     if (this.firm?.paused && !first) { this.say("The firm is paused, so a shift would do nothing. Press Start first.", "warnc"); return; }
     try {
       await gh.dispatch(state.token, state.owner, gh.FIRM_WORKFLOW, { settings: "" });

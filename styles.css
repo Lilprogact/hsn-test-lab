@@ -317,3 +317,6 @@ button[disabled] { opacity: .5; cursor: not-allowed; }
 @keyframes roompulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
 @media (prefers-reduced-motion: reduce) { .dot-live { animation: none; } }
 @media (max-width: 560px) { .room-steps { grid-template-columns: 1fr; } }
+
+/* While a run is in flight on GitHub the page's other run buttons are dimmed: one thing at a time (firm.js: free). */
+.is-busy button.runs { opacity: .45; }
