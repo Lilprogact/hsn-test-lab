@@ -151,6 +151,7 @@ export function lookWords(e) {
   if (e?.tool === "breakdown") return { text: `asks the Engine for its results ${what || "broken down"}`, short: `asks: ${what || "breakdown"}` };
   if (e?.tool === "compare_exits") return { text: "asks the Engine to compare ways of exiting", short: "asks: exits" };
   if (e?.tool === "library") return { text: "reads the firm's library of tested ideas", short: "the library" };
+  if (e?.tool === "growth_check") return { text: `asks the Engine how ${what.replace(/^the growth challenge( for )?/, "") || "one of its ideas"} does in the growth challenge (practice months)`, short: "growth challenge?" };
   if (e?.tool === "next_level") return { text: "checks what the next level needs", short: "next level?" };
   return { text: `looks something up (${what || e?.tool || "research"})`, short: what || "research" };
 }
@@ -165,7 +166,7 @@ export function eventLine(e, nameOf = (id) => id) {
     case "tested": {
       if (e.pips === null || e.pips === undefined) return out(`${who}: a test with no trades`, "dim");
       const how = e.by === "engine search" ? ` (the Engine's search: ${e.what || "a small change"})` : e.by === "first test" ? ` (first test of its own code ${e.strategy || ""})`
-        : e.by === "records room" ? " (the Records Room's search)" : "";
+        : e.by === "records room" ? " (the Records Room's search)" : e.by === "records room meeting" ? ` (the Records Room's meeting had the Engine test ${e.idea || "it"})` : "";
       return out(`${who}: ${pips(e.pips)}${win}${how}`, e.pips > 0 ? "up" : "down");
     }
     case "thinking": return out(`${who} is thinking`, "dim");
@@ -193,8 +194,18 @@ export function eventLine(e, nameOf = (id) => id) {
     case "room_entry": return out(`${who} enters the growth challenge with ${e.idea} (${e.plan || "a money plan"})`, "");
     case "room_leader": return out(`${who} takes the lead in the growth challenge: ${madeWords(e.made)} on the months nobody has seen`, "big");
     case "room_put_forward": return out(`${who} puts ${e.idea} forward for the growth challenge`, "dim");
-    case "room_meeting_start": return out("The Records Room sits down to agree a joint strategy", "dim");
-    case "room_meeting": return out(`The Records Room agrees its joint strategy ${e.strategy || ""}`, "up");
+    case "room_thinking": return out(`The Records Room, session ${e.session ?? ""}: its six think first, each alone at its own desk`.replace("session :", ":"), "big");
+    case "room_brought": return e.idea ? out(`${who} has finished thinking alone and brings ${e.idea} to the room: ${pips(e.pips)}${win}`, e.pips > 0 ? "up" : "down")
+      : out(`${who} has finished thinking alone and brings nothing new this time`, "dim");
+    case "room_meeting_start": return out("The Records Room meets: the six sit at one table and everyone's work goes on it", "");
+    case "room_voice": return out(`${who} at the table (${e.vote === "merge" ? "wants one joint strategy" : "wants the ideas kept apart"}): "${String(e.say || "").trim()}"`, e.vote === "merge" ? "up" : "");
+    case "room_voice_missed": return out(`${who} did not speak at the table (the call did not come back)`, "dim");
+    case "room_decision": return e.decision === "no_quorum" ? out("The Records Room could not decide: too few of its six spoke", "dim")
+      : e.decision === "merge" ? out(`The Records Room votes ${e.merge} to ${e.keep} to make ONE joint strategy`, "big")
+        : out(`The Records Room votes ${e.keep} to ${e.merge} to keep its ideas apart`, "big");
+    case "room_meeting": return e.decision === undefined ? out(`The Records Room agrees its joint strategy ${e.strategy || ""}`, "up")
+      : e.strategy ? out(`The Records Room's meeting ends: its joint strategy is ${e.strategy}${e.pips != null ? ` (${pips(e.pips)}${win})` : ""}`, "up")
+        : out(`The Records Room's meeting ends${e.decision === "merge" ? ": it voted for one strategy, but none could be written down this time" : ": its ideas stay apart"}`, "dim");
     case "ceo_reward": return out(`The CEO rewards ${who}: the best in the growth challenge (${madeWords(e.made)} on the months nobody has seen)`, "big");
     case "turn_failed": case "meeting_failed": case "transfer_declined": return null;
     default: return out(String(e.kind).replaceAll("_", " "), "dim");
@@ -340,6 +351,41 @@ export function roomView(firm) {
     return { id, name: m.name || id, side: m.side, where: [m.level, m.floor ? `floor ${m.floor}` : "", m.group ? `group ${m.group}` : ""].filter(Boolean).join(", "),
       recordIdea: rec.idea, record: recordLine(rec), words: rec.in_words || [], progress, firstBy: by, improved, tried: mi.tried ?? 0 };
   };
+  // the room's last meeting, and what each member brought to it and said there (its own words, as recorded)
+  const mt = (r.meetings || []).filter((x) => x && x.voices).slice(-1)[0] || null;
+  const VOTE = { merge: "wants one joint strategy", keep_separate: "wants the ideas kept apart" };
+  const seat = (id) => {
+    const m = r.members[id], lt = m.last_turn || null, b = mt?.brought?.[id] || null, v = mt?.voices?.[id] || null;
+    const fresh = !!(lt && mt && (mt.think != null ? lt.think === mt.think : true));
+    return { id, name: m.name || id, side: m.side, sideWords: m.side === "pips" ? "most pips" : "highest win rate",
+      brought: b ? { idea: b.idea, line: recordLine(b), hypothesis: b.hypothesis || "" } : null,
+      alone: !lt ? "Has not had a turn of its own in the room yet." : !lt.ok ? "Its own turn did not come back, so it brought nothing new."
+        : b ? "" : lt.idea ? "" : "Thought alone, but what it settled on was not a new strategy.",
+      note: fresh && lt.ok ? String(lt.note || "") : "", lookups: fresh ? (lt.calls ?? null) : null, looked: fresh ? (lt.looked || []) : [],
+      spoke: !!v, vote: v?.vote || null, voteWords: v ? VOTE[v.vote] || v.vote : "did not speak", say: v?.say || "",
+      take: (v?.take_from || []).map((x) => `${nameOf(x.agent)}: ${x.what}`), next: v?.next || "", unverified: v?.unverified || [],
+      proposal: v?.proposal_idea || null };
+  };
+  const meeting = mt ? (() => {
+    const votes = mt.votes || {}, one = mt.decision === "merge", none = mt.decision === "no_quorum";
+    const props = (mt.ideas || []).filter((x) => x.by !== "room").map((x) => ({ idea: x.idea, by: nameOf(x.by), line: x.result ? recordLine(x.result) : "" }));
+    return { at: mt.at, cycle: mt.cycle, session: mt.think ?? null, decision: mt.decision, minutes: mt.minutes || null, cost: mt.cost_usd ?? null,
+      votesLine: `${votes.merge ?? 0} wanted one joint strategy, ${votes.keep_separate ?? 0} wanted to keep the ideas apart${votes.silent ? `, ${votes.silent} did not speak` : ""}.`,
+      outcome: none ? "Too few spoke for the room to decide anything." : one ? (mt.idea ? "More wanted one than not, so the room made ONE joint strategy." : "More wanted one than not, but the joint strategy could not be written down this time.")
+        : "The room did not want one strategy this time, so its ideas stay apart. Nobody has to merge.",
+      one, joint: mt.idea ? { idea: mt.idea, line: mt.result ? recordLine(mt.result) : "", why: mt.why || "", plan: mt.plan ? planShort(mt.plan) : "the Engine's own grid of plans",
+        credit: Object.entries(mt.credit_notes || {}).map(([id, what]) => `${nameOf(id)}: ${(what || []).join(", ")}`) } : null,
+      jointError: one && !mt.idea ? (mt.joint_error || "") : "", proposals: props, learned: mt.learned || [], seats: ids.map(seat), recordNote: mt.record_note || "" };
+  })() : null;
+  const lt = r.last_think || null;
+  const think = lt ? { session: lt.session, at: lt.at, seconds: lt.seconds, cost: lt.cost_usd, calls: lt.ai_calls, allowance: lt.allowance_usd, model: lt.model, effort: lt.effort,
+    thought: Object.values(lt.members || {}).filter((x) => x.came_back).length, of: Object.keys(lt.members || {}).length, replay: lt.replay || null,
+    engine: lt.engine || null, warnings: lt.warnings || [], errors: lt.errors || [],
+    line: `Session ${lt.session}: ${Object.values(lt.members || {}).filter((x) => x.came_back).length} of ${Object.keys(lt.members || {}).length} thought alone, then `
+      + (lt.meeting ? (lt.meeting.decision === "merge" ? `the room voted ${lt.meeting.votes?.merge ?? 0} to ${lt.meeting.votes?.keep_separate ?? 0} to make one joint strategy${lt.meeting.idea ? ` (${lt.meeting.idea})` : ""}`
+        : lt.meeting.decision === "keep_separate" ? `the room voted ${lt.meeting.votes?.keep_separate ?? 0} to ${lt.meeting.votes?.merge ?? 0} to keep its ideas apart` : "too few spoke for the room to decide")
+        : "the room did not meet")
+      + `. It took ${Math.max(1, Math.round((lt.seconds || 0) / 60))} minutes and $${(+lt.cost_usd || 0).toFixed(2)} of AI (${lt.ai_calls ?? 0} calls${lt.model ? `, ${lt.model}` : ""}${lt.effort ? `, ${lt.effort} effort` : ""}).` } : null;
   const side = (key, title, job) => ({ key, title, job, members: ids.filter((id) => r.members[id]?.side === key).map(member) });
   const then = Object.fromEntries((r.frontier_at_open || []).map((f) => [f.win_at_least, f]));
   const frontier = (r.frontier || []).map((f) => { const was = then[f.win_at_least]; const up = f.pips != null && was?.pips != null && f.pips > was.pips + 1e-9; return {
@@ -360,7 +406,7 @@ export function roomView(firm) {
     line: `${x.name} was rewarded for ${x.idea} with ${x.plan_words}: ${madeWords(x.made_unseen)} on the ${x.unseen_months} months nobody had seen (shift ${x.cycle}).${x.note ? ` "${x.note}"` : ""}` }));
   return {
     open: !!r.open, name: r.name || "The Records Room", ids, names: ids.map(nameOf),
-    intro: "The three agents with the most pips and the three with the highest win rate, in one room. Their job is one strategy with BIG PIPS AND A HIGH WIN RATE, and the growth challenge below. They keep their seats and floors: the room is extra work. Each one's record is pinned, so nobody forgets what made it; the Engine's search for the room starts from those records and the mixes are made from them.",
+    intro: "The three agents with the most pips and the three with the highest win rate, in one room. Each thinks alone first; then they meet, see each other's work and make it into one strategy only if most of them want to. Their job is one strategy with BIG PIPS AND A HIGH WIN RATE, and the growth challenge below. They keep their seats and floors: the room is extra work. Each one's record is pinned, so nobody forgets what made it; the Engine's search for the room starts from those records and the mixes are made from them.",
     sessions: r.sessions || 0, openedCycle: r.opened_cycle, openedAt: r.opened_at, last: r.last_session || null, closedAt: r.closed_at || null,
     sides: [side("pips", "In the room for the most pips", `Their job: raise the win rate and keep the pips (at least ${keep}% of the record's).`),
       side("win", "In the room for the highest win rate", `Their job: raise the pips and keep the win rate (${high}% or more).`)],
@@ -383,5 +429,68 @@ export function roomView(firm) {
       beats: rows.filter((x) => x.tradable).every((x) => (t.unseen?.made ?? -Infinity) > (r.members[x.id]?.entry?.unseen?.made ?? -Infinity)) } : null,
     mixes: (r.mixes || []).length,
     learned: r.learned || [], meetings: (r.meetings || []).slice().reverse(), rewards,
+    thinks: r.thinks || 0, think, meeting, seats: meeting ? meeting.seats : ids.map(seat),
   };
+}
+
+// What a session of the room costs, as the engine sets it (hsnlab/firm/cycle.py: ROOM_TURN, ROOM_VOICE_USD, ROOM_JOINT_USD):
+// every call has a ceiling, so a whole session can never cost more than `maxUsd`; `typicalUsd` is said only until a
+// real session has been run, after which the page quotes what the last one really cost.
+export const ROOM_SESSION = { typicalUsd: 2.5, maxUsd: 6.1, minUsd: 1.0, githubMinutes: 8 };
+
+/** Before a session of the room is started: what it will cost, in the firm's own figures. `ok` is false when the
+ *  month's AI money left is less than the engine needs to start one (it would refuse). */
+export function roomSessionCost(firm, minutesUsed = null) {
+  const b = firm?.budget || {}, left = Math.max(0, (+b.firm_budget_usd || 0) - (+b.firm_spent_usd || 0)), last = firm?.room?.last_think;
+  const usual = last && +last.cost_usd > 0 ? `The last one cost $${(+last.cost_usd).toFixed(2)}` : `About $${ROOM_SESSION.typicalUsd.toFixed(2)}`;
+  const mins = last && +last.seconds > 0 ? Math.ceil(last.seconds / 60) + 2 : ROOM_SESSION.githubMinutes;      // the session itself, and the machine's setting up and saving
+  return { ok: left >= ROOM_SESSION.minUsd, left, minutes: mins,
+    line: `${usual} of AI (every call has a ceiling, so never more than $${Math.min(ROOM_SESSION.maxUsd, left).toFixed(2)}; $${left.toFixed(2)} of this month's $${n0(b.firm_budget_usd)} is left) `
+      + `and about ${mins} GitHub minutes${minutesUsed === null ? "" : ` (${n0(minutesUsed)} of the free 2,000 are used this month)`}.`,
+    why: left >= ROOM_SESSION.minUsd ? "" : `$${left.toFixed(2)} is left of this month's AI budget, and a session needs at least $${ROOM_SESSION.minUsd.toFixed(2)}. Raise the AI budget in the CEO's office first.` };
+}
+
+const PHASES = { opening: "Opening the books: loading the price history", thinking: "Alone: each of the six is thinking on its own", meeting: "Together: the six are at one table",
+  engine: "The Engine is testing and judging the growth challenge", done: "Finished" };
+
+/** What a room member is doing right now, in plain words, from the live status file's own label for it. */
+function doingWords(m) {
+  const d = String(m?.detail || "");
+  switch (m?.state) {
+    case "waiting": return "about to start";
+    case "thinking": return d && d !== "reading the research pack" ? `thinking (${d})` : "thinking: reading the Engine's research";
+    case "researching": return /^by /.test(d) ? `asks the Engine for its results ${d}` : d === "exits" ? "asks the Engine to compare exits" : /^reading /.test(d) ? d.replace(/^reading (\S+)/, (x, k) => `reads ${CODE_WORDS[k] || k}`)
+      : /^the growth challenge/.test(d) ? `asks the Engine about ${d}` : d === "testing a rule set" ? "has the Engine test a rule set" : d ? `asks the Engine: ${d}` : "asks the Engine a question";
+    case "testing": return "the Engine is testing its idea";
+    case "in_meeting": return "at the room's table";
+    case "brought": return `finished alone: brings ${m.idea}${m.pips != null ? ` (${n0(m.pips)} pips, ${one(m.win)}% wins, ${n0(m.sets)} trades)` : ""}`;
+    case "nothing_new": return "finished alone: no new strategy this time";
+    case "failed": return "its own turn did not come back";
+    default: return m?.state ? String(m.state).replaceAll("_", " ") : "";
+  }
+}
+
+/**
+ * A session of the Records Room as it runs, from the live status file (status/firm_live.json on the live branch): which
+ * of its three parts it is in, what each of the six is doing or has brought, and who has said what at the table.
+ * Null when the live file is not a session of the room. `running` is false once it has finished or the file is stale.
+ */
+export function roomLiveView(live, firm, now = Date.now()) {
+  const lr = live?.room, r = firm?.room;
+  if (!lr || !r) return null;
+  const ids = r.order?.length ? r.order : Object.keys(r.members || {});
+  const fresh = now - Date.parse(live.updated_at) < 6 * 60 * 1000;
+  const running = !!(live.mode === "firm" && live.stage && live.stage !== "Cycle finished" && fresh);
+  const order = ["thinking", "meeting", "engine"], at = lr.phase === "done" ? 3 : lr.phase === "opening" ? -1 : order.indexOf(lr.phase);
+  const votes = lr.votes || null;
+  return { running, session: lr.session, phase: lr.phase, phaseWords: PHASES[lr.phase] || String(lr.phase || ""), stage: live.stage || "", percent: live.percent ?? 0,
+    minutes: Math.round((live.elapsed_s || 0) / 60), updatedAt: live.updated_at,
+    steps: [["thinking", "1 · Alone", "each thinks on its own"], ["meeting", "2 · Together", "they meet and see each other's work"], ["engine", "3 · The Engine", "tests and judges"]]
+      .map(([key, label, words], i) => ({ key, label, words, state: i < at ? "done" : i === at ? "now" : "todo" })),
+    members: ids.map((id) => { const m = lr.members?.[id] || {}, v = lr.voices?.[id] || null; return { id, name: r.members[id]?.name || firm?.agents?.[id]?.name || id, side: r.members[id]?.side,
+      state: m.state || "waiting", busy: ["thinking", "researching", "testing"].includes(m.state), done: ["brought", "nothing_new", "failed"].includes(m.state), doing: doingWords(m),
+      vote: v?.vote || null, say: v?.say || "" }; }),
+    finished: ids.filter((id) => ["brought", "nothing_new", "failed"].includes(lr.members?.[id]?.state)).length, of: ids.length,
+    spoke: Object.keys(lr.voices || {}).length,
+    votesLine: votes ? (votes.decision === "merge" ? `The vote: ${votes.merge} to ${votes.keep_separate} for ONE joint strategy.` : votes.decision === "keep_separate" ? `The vote: ${votes.keep_separate} to ${votes.merge} to keep the ideas apart.` : "Too few spoke for the room to decide.") : "" };
 }

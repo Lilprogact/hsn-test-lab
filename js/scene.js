@@ -109,7 +109,7 @@ export function paintStatic(c, b, view = null) {
   // top floor
   const tr = b.topRect;
   R(c, tr.x, tr.y, tr.w, tr.h, "#141d1b"); c.strokeStyle = "#2f5546"; c.strokeRect(tr.x + 0.5, tr.y + 0.5, tr.w - 1, tr.h - 1);
-  c.font = `600 12px ${FONT}`; c.fillStyle = PAPER; c.fillText(b.phone ? "Top floor" : "Top floor · Audit desk and the CEO's office", tr.x + b.land + 6, tr.y + 15);
+  c.font = `600 12px ${FONT}`; c.fillStyle = PAPER; c.fillText(b.phone ? "Top floor" : b.byId?.ROOM ? "Top floor · Audit desk, the Records Room and the CEO's office" : "Top floor · Audit desk and the CEO's office", tr.x + b.land + 6, tr.y + 15);
   // floors 5 to 1: a sign strip, then the rooms
   for (const f of [5, 4, 3, 2, 1]) {
     const r = b.floorRect[f]; if (!r || !inView(view, r.x, r.y, r.w, r.h)) continue;
@@ -168,6 +168,23 @@ function paintRoomStatic(c, b, room) {
       R(c, t.x0 - 10, t.y, t.per * 14 + 6, 4, WOOD); R(c, t.x0 - 10, t.y, t.per * 14 + 6, 1, WOOD_LIGHT);
       R(c, t.x0 - 7, t.y + 4, 3, h - 13 - (t.y - y), WOOD_DARK); R(c, t.x0 + t.per * 14 - 10, t.y + 4, 3, h - 13 - (t.y - y), WOOD_DARK);
       R(c, x + w / 2 - 22, y + HEAD_H + 4, 44, 20, "#06120c"); c.strokeStyle = "#2f5546"; c.strokeRect(x + w / 2 - 21.5, y + HEAD_H + 4.5, 43, 19);
+    }
+    return;
+  }
+  if (kind === "records") {                                   // the Records Room: a table for its six and, where there is space, the room's board
+    const t = b.tableOf(room), open = b.firm?.room?.open !== false, span = (t.per - 1) * t.gap;
+    R(c, x, y, w, h, "#1a2119"); c.strokeStyle = open ? "#7a6a34" : LINE; c.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    c.font = `600 10px ${FONT}`; c.fillStyle = open ? "#f0d58a" : MUTED; c.fillText(fit(c, open ? "Records Room" : "Records Room (closed)", w - 12), x + 6, y + 13);
+    R(c, x + 1, y + h - 9, w - 2, 8, "#17221d"); R(c, x + 1, y + h - 9, w - 2, 1, "#24342c");
+    for (let i = 0; i < t.per; i++) R(c, t.x0 + i * t.gap - 4.5, t.y - 13, 9, 13, i < 3 ? "#3a3220" : "#1f3140");                 // three chairs for the pips side, three for the win-rate side
+    R(c, t.x0 - 10, t.y, span + 20, 4, WOOD); R(c, t.x0 - 10, t.y, span + 20, 1, WOOD_LIGHT);
+    R(c, t.x0 - 7, t.y + 4, 3, h - 13 - (t.y - y), WOOD_DARK); R(c, t.x0 + span + 4, t.y + 4, 3, h - 13 - (t.y - y), WOOD_DARK);
+    if (t.board) {                                             // the board: who leads the growth challenge, from the room's own file
+      const bd = b.roomBoard(), lead = b.firm?.room?.leader;
+      R(c, bd.x - 1, bd.y - 1, bd.w + 2, bd.h + 2, "#7a6a34"); R(c, bd.x, bd.y, bd.w, bd.h, "#06120c");
+      c.font = `700 6px ${FONT}`; c.fillStyle = AMBER; c.fillText("GROWTH CHALLENGE", bd.x + 3, bd.y + 8);
+      c.font = `600 8px ${FONT}`; c.fillStyle = PAPER; c.fillText(fit(c, lead ? `1 ${first(lead.name)}` : "no leader yet", bd.w - 6), bd.x + 3, bd.y + 17.5);
+      if (lead && lead.made_unseen != null) { c.fillStyle = GOOD; c.fillText(fit(c, `+£${Math.round(lead.made_unseen).toLocaleString("en-GB")}`, bd.w - 6), bd.x + 3, bd.y + 26.5); }
     }
     return;
   }
@@ -289,6 +306,15 @@ export function paintDynamic(c, b, view = null) {
       const busy = [...b.agents.values()].some((a) => a.away?.room === room);
       if (!busy) R(c, room.x + 1, room.y + 1, room.w - 2, room.h - 2, `rgba(2,6,5,${dim.toFixed(3)})`);
       else if (!room.small) { c.fillStyle = GOOD; c.font = `600 7.5px ${FONT}`; const sw = c.measureText("in session").width; c.fillText("in session", room.x + room.w / 2 - sw / 2, room.y + HEAD_H + 16.5); }
+    } else if (room.kind === "records") {
+      const busy = [...b.agents.values()].some((a) => a.away?.room === room);
+      if (!busy) R(c, room.x + 1, room.y + 1, room.w - 2, room.h - 2, `rgba(2,6,5,${(dim * 0.75).toFixed(3)})`);
+      else {                                                   // the six are in: the lamp over the table is on
+        const tb = b.tableOf(room), span = (tb.per - 1) * tb.gap;
+        c.fillStyle = "rgba(255,233,168,.07)"; c.beginPath(); c.moveTo(tb.x0 + span / 2 - 6, room.y + 16); c.lineTo(tb.x0 + span / 2 + 6, room.y + 16); c.lineTo(tb.x0 + span + 12, tb.y + 4); c.lineTo(tb.x0 - 12, tb.y + 4); c.closePath(); c.fill();
+        c.strokeStyle = "#f0d58a"; c.lineWidth = 1; c.strokeRect(room.x + 1.5, room.y + 1.5, room.w - 3, room.h - 3);
+        if (room.w >= 150) { c.fillStyle = GOOD; c.font = `600 7.5px ${FONT}`; c.fillText("in session", room.x + 78, room.y + 12.5); }
+      }
     } else if (room.kind === "audit") paintAudit(c, b, room, t);
     else if (room.kind === "ceo") paintCeo(c, b, room, wall);
     else if (room.kind === "engine") paintEngine(c, b, room, wall);
@@ -463,6 +489,7 @@ function paintBubble(c, b, a, view, t) {
     return;
   }
   if (!a.status || a.status === "idle" || (a.away && a.walking)) return;
+  if (a.away?.room?.kind === "records") return;                 // at the Records Room's table: the room's own sign says it is in session, and each speaks in turn
   if (a.away) { const mates = [...b.agents.values()].filter((x) => x.away && (a.away.huddle ? x.away.huddle && x.group === a.group : x.away.room === a.away.room)); if (mates[0] !== a) return; }      // one bubble per gathering
   const together = a.status === "waiting_audit" || (a.status === "testing" && /challenge/.test(a.detail || "") && !/own/.test(a.detail || ""));
   if (together) { const g = b.groups.get(a.group); if (g && g.seats.find((id) => { const x = b.agents.get(id); return x && x.status === a.status && x.detail === a.detail; }) !== a.id) return; }
@@ -492,7 +519,7 @@ export function paintWorld(c, b, view = null, layer = null) {
 /** The camera's frame: what it is showing (LIVE, a REPLAY, or the firm at rest), and one line saying what is happening. */
 export function paintHud(c, b, w, h, shot) {
   const wd = b.world || {};
-  const mode = b.mode === "live" ? ["LIVE", BAD] : b.mode === "replay" ? [`REPLAY · shift ${b.replayCycle ?? ""}`, AMBER] : wd.paused ? ["PAUSED", DIM] : ["BETWEEN SHIFTS", TEAL];
+  const mode = b.mode === "live" ? [b.live?.room ? "LIVE · the Records Room" : "LIVE", BAD] : b.mode === "replay" ? [`REPLAY · ${b.replayTitle || "shift " + (b.replayCycle ?? "")}`, AMBER] : wd.paused ? ["PAUSED", DIM] : ["BETWEEN SHIFTS", TEAL];
   c.font = `700 11px ${FONT}`;
   const tw = c.measureText(mode[0]).width + 26;
   c.fillStyle = "rgba(6,12,10,.78)"; roundRect(c, 10, 10, tw, 22, 11); c.fill();

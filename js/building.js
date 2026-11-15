@@ -1,7 +1,8 @@
 // The HSN Capital building as a small 2D world: a side-on cutaway tower under the London sky, drawn with our own art
-// (scene.js, sprites.js; no characters, names, logos or art from any game). From the top: the Audit desk and the CEO's
-// office, floors 5 to 2 with two group rooms and a discussion room each, the big Analysts' floor (12 group rooms), and
-// in the basement the Engine, the price history, the code room and the sandbox. A lift runs down the side.
+// (scene.js, sprites.js; no characters, names, logos or art from any game). From the top: the Audit desk, the Records
+// Room (once the CEO has opened it: a table for its six) and the CEO's office, floors 5 to 2 with two group rooms and a
+// discussion room each, the big Analysts' floor (12 group rooms), and in the basement the Engine, the price history, the
+// code room and the sandbox. A lift runs down the side.
 //
 // All 100 agents are always in it, each with a look of its own, at its own desk: shirt in its level's colour, a mood
 // on its face, its name, and four small bars for its progress to the next level (months in profit, pips, risk to
@@ -14,6 +15,8 @@
 //     down to the Engine and its real numbers come back to the desk. Code handed in: it goes to the sandbox. A meeting:
 //     the group walks to its floor's discussion room. An audit: the papers go up to the Audit desk. A level-up: the
 //     lift, and a celebration on the new floor. A swap down, a transfer, a new Analyst: the same, as they happened.
+//     A session of the Records Room: its six think at their own desks, each alone; then they take the lift to the
+//     room, sit at its table, each says what it would take from the others and votes, and the room's decision goes up.
 // Only the sky, the blinking and the turning of the machines are decoration. With animations off the same scene is
 // drawn still and events are applied without motion.
 //
@@ -30,12 +33,14 @@ const WORKING = new Set(["thinking", "researching", "coding", "testing"]);
 const STEP = { tested: 0.14, thinking: 0.1, looked: 0.3, coded: 0.3, meeting_start: 1.6, meeting: 1.2, challenge_start: 1.6, challenge_failed: 0.6, audit_start: 1.4,
   audit_failed: 0.9, audit_recheck: 1.2, battle: 0.9, level_up: 3.4, swapped_down: 3.0, transfer: 1.6, rotation: 0.6, solo_passed_no_seat: 0.6, data_update: 0.3, turn_failed: 0.1,
   meeting_failed: 0.3, transfer_declined: 0.2, retest_failed: 0.4,
-  room_opened: 2.4, room_session: 0.8, room_entry: 0.5, room_put_forward: 0.3, room_leader: 1.6, room_meeting_start: 1.4, room_meeting: 1.2, ceo_reward: 2.6 };
+  room_opened: 2.4, room_session: 0.8, room_entry: 0.5, room_put_forward: 0.3, room_leader: 1.6, room_meeting_start: 1.4, room_meeting: 1.6, ceo_reward: 2.6,
+  room_thinking: 1.6, room_brought: 0.9, room_voice: 4.2, room_voice_missed: 0.8, room_decision: 3.6 };
 // the camera: how much an event matters (a bigger number takes the picture from a smaller one) and how long it is shown (real seconds)
 const SHOT = { tested: [1, 2.4], thinking: [1, 2.2], looked: [1, 2.6], coded: [3, 3.2], meeting_start: [3, 4.2], meeting: [2, 2.6], challenge_start: [4, 4], challenge_failed: [4, 3.2],
   audit_start: [4, 3.6], audit_failed: [4, 3.2], audit_recheck: [4, 3.6], level_up: [5, 8], swapped_down: [4, 6], battle: [4, 3.2], transfer: [3, 5], rotation: [2, 3], solo_passed_no_seat: [3, 3.2],
   data_update: [3, 3.2], retest_failed: [3, 3],
-  room_opened: [5, 6], room_session: [2, 3], room_entry: [2, 2.8], room_put_forward: [1, 2.4], room_leader: [4, 4.5], room_meeting_start: [3, 3.6], room_meeting: [3, 3], ceo_reward: [5, 7] };
+  room_opened: [5, 6], room_session: [2, 3], room_entry: [2, 2.8], room_put_forward: [1, 2.4], room_leader: [4, 4.5], room_meeting_start: [4, 5], room_meeting: [4, 4], ceo_reward: [5, 7],
+  room_thinking: [3, 3.6], room_brought: [2, 3], room_voice: [4, 4.6], room_voice_missed: [2, 2], room_decision: [5, 6] };
 const MAX_FLIGHTS = 70;
 
 const first = (name) => String(name || "").split(" ")[0];
@@ -137,9 +142,13 @@ export class Building {
     const add = (room) => { room.lane = room.virtual ? room.y + room.h - 1 : room.small ? room.y + room.h - 2 : room.y + room.h - 4; this.rooms.push(room); return room; };
     let y = SKY_H;
     this.topRect = { x: L, y, w: W - L, h: this.hTop };
-    const aw = Math.max(110, innerW * (this.phone ? 0.42 : 0.3));
+    // the Records Room stands between the Audit desk and the CEO's office once the CEO has opened one (firm.room)
+    const hasRoom = !!this.firm?.room;
+    const aw = hasRoom ? Math.max(this.phone ? 86 : 110, innerW * (this.phone ? 0.27 : 0.24)) : Math.max(110, innerW * (this.phone ? 0.42 : 0.3));
+    const roomW = hasRoom ? (this.phone ? Math.max(115, innerW * 0.36) : clamp(innerW * 0.34, 170, 300)) : 0;
     add({ id: "AUDIT", kind: "audit", floor: 6, x: innerX, y: y + LABEL_H, w: aw - 4, h: this.hTop - LABEL_H - 6 });
-    const ceo = add({ id: "CEO", kind: "ceo", floor: 6, x: innerX + aw, y: y + LABEL_H, w: innerW - aw, h: this.hTop - LABEL_H - 6 });
+    if (hasRoom) add({ id: "ROOM", kind: "records", floor: 6, x: innerX + aw, y: y + LABEL_H, w: roomW - 4, h: this.hTop - LABEL_H - 6 });
+    const ceo = add({ id: "CEO", kind: "ceo", floor: 6, x: innerX + aw + roomW, y: y + LABEL_H, w: innerW - aw - roomW, h: this.hTop - LABEL_H - 6 });
     this.rows[6] = [{ top: y, bottom: y + this.hTop, lane: ceo.lane }];
     y += this.hTop;
     for (const f of [5, 4, 3, 2]) {
@@ -206,8 +215,14 @@ export class Building {
     return { x: cx + cw / 2, y: r.y + HEAD_H + 50, cw, cx, top: r.y + HEAD_H, lane: r.lane, floor: g.floor };
   }
   home(id) { const a = this.agents.get(id); const g = a && this.groups.get(a.group); if (!g) return null; const i = g.seats.indexOf(id); return i < 0 ? null : this.seatPos(g, i); }
-  /** A discussion room's table: how many sit along it and where the first chair is. */
-  tableOf(room) { const per = Math.max(2, Math.floor((room.w - 28) / 14)); return { per, x0: room.x + 19, y: room.y + room.h - 34 }; }
+  /** A room's table: how many sit along it, how far apart, and where the first chair is. The Records Room's table seats
+   *  its six, with the room's board on the wall beside it when there is space. */
+  tableOf(room) {
+    if (room.kind === "records") { const board = room.w >= 190 ? 74 : 0, gap = clamp((room.w - 34 - board) / 5, 12, 19); return { per: 6, gap, board, x0: room.x + 18, y: room.y + room.h - 34 }; }
+    const per = Math.max(2, Math.floor((room.w - 28) / 14)); return { per, gap: 14, x0: room.x + 19, y: room.y + room.h - 34 };
+  }
+  /** Where the Records Room's board hangs (the room's results go up on it), or null. */
+  roomBoard() { const r = this.byId?.ROOM; if (!r) return null; const t = this.tableOf(r); return t.board ? { x: r.x + r.w - t.board + 4, y: r.y + 19, w: t.board - 10, h: 30 } : { x: r.x + r.w / 2 - 10, y: r.y + 16, w: 0, h: 0 }; }
   spot(room, i) {
     if (!room) return { x: this.liftW + 20, y: this.groundY - 8, lane: this.groundY - 4, floor: 1 };
     if (room.virtual || room.small) {
@@ -215,9 +230,9 @@ export class Building {
       return { x: room.x + 12 + col * gap + (row % 2) * 7, y: room.lane, lane: room.lane, floor: room.floor };
     }
     const t = this.tableOf(room);
-    if (i < t.per) return { x: t.x0 + i * 14, y: t.y, table: true, lane: room.lane, floor: room.floor };
+    if (i < t.per) return { x: t.x0 + i * t.gap, y: t.y, table: true, lane: room.lane, floor: room.floor };
     const j = i - t.per, row = Math.floor(j / t.per), col = j % t.per;
-    return { x: t.x0 + 7 + col * 14, y: t.y - 8 - row * 9, lane: room.lane, floor: room.floor };
+    return { x: t.x0 + 7 + col * t.gap, y: t.y - 8 - row * 9, lane: room.lane, floor: room.floor };
   }
   auditSeat() { const r = this.byId?.AUDIT; return r ? { x: r.x + r.w - 26, y: r.y + r.h - 20 } : { x: 0, y: 0 }; }
   ceoDesk() { const r = this.byId?.CEO; return r ? { x: r.x + (this.phone ? Math.max(30, r.w * 0.24) : r.w * 0.38), y: r.y + r.h - 20 } : { x: 0, y: 0 }; }
@@ -277,6 +292,7 @@ export class Building {
       if (this.mode === "replay") continue;
       a.status = s?.status || "idle"; a.detail = s?.detail || ""; if (s?.mood) a.mood = s.mood;
       if (!running) { a.away = null; }
+      else if (a.status === "in_meeting" && /Records Room/.test(a.detail) && this.byId.ROOM) a.away = { room: this.byId.ROOM };      // the room's own meeting: at its table on the top floor
       else if (a.status === "in_meeting") { const floor = s.floor || this.groups.get(a.group)?.floor; a.away = floor === 1 && !/discussion/.test(a.detail) ? { huddle: true } : { room: this.rooms.find((r) => r.kind === "discussion" && r.floor === floor) }; }
       else if (a.away && !a.away.sticky) a.away = null;
     }
@@ -300,7 +316,7 @@ export class Building {
   playReplay(replay, { speed = 2, onProgress = null, onEnd = null } = {}) {
     if (!replay || !this.firm) return;
     this.mode = "replay"; this.speed = speed; this.onProgress = onProgress; this.onEnd = onEnd;
-    this.replayTotal = (replay.events || []).length; this.replayCycle = replay.cycle;
+    this.replayTotal = (replay.events || []).length; this.replayCycle = replay.cycle; this.replayTitle = replay.title || `shift ${replay.cycle}`;
     this.saved = { groups: new Map([...this.groups].map(([k, g]) => [k, { ...g, seats: [...g.seats] }])), agents: new Map([...this.agents].map(([k, a]) => [k, { group: a.group, level: a.level, mood: a.mood, name: a.name }])) };
     const startGroups = replay.start?.groups || {}, startAgents = replay.start?.agents || {};
     for (const g of this.groups.values()) { const s = startGroups[g.id]; if (s) { g.floor = s[0]; g.room = s[1]; } g.seats = [null, null, null, null, null]; g.playing = null; }
@@ -312,7 +328,7 @@ export class Building {
     this.engine.count = 0; this.flights = []; this.texts = []; this.shot = null; this.gathering = null;
     this.layout(); this.snapAll();
     this.queue = [...(replay.events || [])]; this.nextAt = this.clock + 0.6;
-    this.say(`Replay of shift ${replay.cycle}: ${this.replayTotal} real events`);
+    this.say(`Replay of ${this.replayTitle}: ${this.replayTotal} real events`);
   }
 
   stopReplay(silent = false) {
@@ -347,9 +363,10 @@ export class Building {
       case "tested": {
         const a = A(e.agent) || A((this.groups.get(e.group)?.seats || []).find(Boolean));
         if (a) {
-          a.status = "testing"; a.hold = this.clock + this.dur(0.9);
+          const board = e.room ? this.roomBoard() : null;                     // the room's meeting had the Engine test it: it leaves from the room, not from a desk
+          if (!board) { a.status = "testing"; a.hold = this.clock + this.dur(0.9); }
           const v = e.pips != null ? e.pips : e.month_score, search = e.by === "engine search", own = e.by === "first test";
-          const good = v != null && v > 0, screen = this.screenOf(a.id);
+          const good = v != null && v > 0, screen = board ? { x: board.x + board.w / 2, y: board.y + board.h / 2 } : this.screenOf(a.id);
           let delay = 0;
           if (animate && screen && this.flights.length < MAX_FLIGHTS) {
             // the idea goes down to the Engine and its real result comes back; the Engine's own search starts at the Engine
@@ -397,19 +414,43 @@ export class Building {
       case "rotation": { const a = A(e.agent); if (a) { a.name = e.new_name || a.name; a.look = lookOf(a.id, a.name); a.mood = "neutral"; a.prog = null; this.dirty = true; chip(e.agent, "new Analyst", "#5aa9ff", 3); } break; }
       case "retest_failed": if (animate) this.flash(e.group, BAD, 1.2); break;
       case "data_update": if (animate) { this.say(`New price data: ${e.months} months on file`, 3); const p = this.port("data"); this.fly({ x: p.x - 60, y: this.groundY - 6 }, p, "#5aa9ff", 0, this.dur(0.8)); } break;
-      // The Records Room (engine: room.py): its six keep their seats, so the room shows as labels over them
+      // The Records Room (engine: room.py). Its six keep their own seats and floors: they think alone at their own desks,
+      // and come up to the room's table on the top floor when the room meets.
       case "room_opened": ids.forEach((id, k) => chip(id, (e.pips || []).includes(id) ? "Records Room · most pips" : "Records Room · win rate", AMBER, 4.5, k * 0.2));
         if (animate) this.say("The Records Room opens: three with the most pips, three with the highest win rate", 5); break;
       case "room_session": if (animate) this.say(`The Records Room: the Engine tested ${fmt(e.tested)} strategies for its six`, 4); break;
       case "room_entry": chip(e.agent, "enters the growth challenge", "#5aa9ff", 2.8); break;
       case "room_put_forward": chip(e.agent, "puts an entry forward", "#5aa9ff", 2.4); break;
       case "room_leader": { const a = A(e.agent); if (a) { a.mood = "proud"; chip(e.agent, "leads the growth challenge", AMBER, 4.5); } break; }
-      case "room_meeting_start": ids.forEach((id) => chip(id, "Records Room meeting", "#b784ff", 3.2)); break;
-      case "room_meeting": ids.forEach((id) => chip(id, "joint strategy agreed", GOOD, 2.8)); break;
+      case "room_thinking": ids.forEach((id, k) => { const a = A(id); if (a) { a.status = "thinking"; a.detail = ""; a.hold = this.clock + this.dur(2.6); } chip(id, "thinking alone", PURPLE, 3, k * 0.15); });
+        if (animate) this.say("The Records Room: its six think first, each alone at its own desk", 5); break;
+      case "room_brought": { const a = A(e.agent); if (a && !a.away) { a.status = "idle"; a.detail = ""; a.hold = 0; }
+        chip(e.agent, e.idea ? `brings ${e.idea}${e.pips != null ? ` ${e.pips > 0 ? "+" : ""}${Math.round(e.pips)}p` : ""}${e.win != null ? ` ${Math.round(e.win)}%` : ""}` : "brings nothing new",
+          e.idea ? (e.pips > 0 ? GOOD : BAD) : "#9fb3aa", 3.6);
+        break; }
+      case "room_meeting_start": { const room = this.byId.ROOM;
+        ids.forEach((id) => { const a = A(id); if (!a) return; a.status = "in_meeting"; a.detail = "the Records Room's meeting"; a.hold = this.clock + this.dur(120);
+          if (room) a.away = { room, sticky: true }; else chip(id, "Records Room meeting", PURPLE, 3.2); });
+        if (animate) this.say("The Records Room meets: everyone's work goes on one table", 5); break; }
+      case "room_voice": { const one = e.vote === "merge", who = A(e.agent);
+        chip(e.agent, `${first(who?.name)}: ${one ? "make it one" : "keep them apart"}`, one ? GOOD : AMBER, 3.9);
+        if (animate && who) (e.take_from || []).slice(0, 2).forEach((id, k) => { const from = A(id); if (from && from.atTable && who.atTable) this.fly({ x: from.x, y: from.y - 17 }, { x: who.x, y: who.y - 17 }, "#ffe066", k * this.dur(0.25), this.dur(0.7)); });      // what it would take, from whom
+        break; }
+      case "room_voice_missed": chip(e.agent, "did not speak", "#9fb3aa", 2.4); break;
+      case "room_decision": { const one = e.decision === "merge", none = e.decision === "no_quorum", all = (e.merge || 0) + (e.keep || 0);
+        if (animate) {
+          if (this.byId.ROOM) { this.word(none ? "NO DECISION" : one ? `ONE JOINT STRATEGY · ${e.merge} to ${e.keep}` : `KEPT APART · ${e.keep} to ${e.merge}`, this.byId.ROOM, one ? GOOD : AMBER, true); if (one) this.celebrate(this.byId.ROOM, 30, false); }
+          this.say(none ? "The Records Room: too few spoke for it to decide" : one ? `The Records Room has voted: ${e.merge} of ${all} want one joint strategy` : `The Records Room has voted: ${e.keep} of ${all} want to keep their ideas apart`, 5);
+        }
+        break; }
+      case "room_meeting": ids.forEach((id) => { const a = A(id); if (!a) return; a.away = null; a.status = "idle"; a.detail = ""; a.hold = 0; if (!this.byId.ROOM) chip(id, e.strategy ? "joint strategy agreed" : "meeting over", e.strategy ? GOOD : "#9fb3aa", 2.8); });
+        if (animate && e.strategy && this.byId.ROOM) this.word(`joint strategy ${e.strategy}`, this.byId.ROOM, GOOD);
+        break;
       case "ceo_reward": { const a = A(e.agent); if (a) { a.mood = "proud"; chip(e.agent, "★ rewarded by the CEO", AMBER, 6); } if (animate) this.say(`The CEO rewards ${a?.name || "the room's leader"}`, 5); break; }
       default: break;
     }
     if (animate) this.point(e);
+    if (e.kind === "tested" && e.room) return 1.2;          // what the room's meeting had tested: one result at a time, long enough to read
     return (STEP[e.kind] ?? 0.2);
   }
 
@@ -544,6 +585,7 @@ export class Building {
       let wait = this.apply(e, true);
       // a meeting is shown properly: the next event waits until everyone has walked there and sat down a moment
       if (e.kind === "meeting_start") this.gathering = { ids: this.members(e), until: this.clock + this.dur(12), sit: this.dur(1.6), at: null };
+      if (e.kind === "room_meeting_start" && this.byId.ROOM) this.gathering = { ids: this.members(e), until: this.clock + this.dur(45), sit: this.dur(2), at: null };
       const n = this.queue[0];
       const pair = n && ((e.kind === "swapped_down" && !e.solo && n.kind === "level_up" && !n.solo && n.from === e.to && n.to === e.from)      // a won promotion battle
         || (e.kind === "level_up" && e.solo && n.kind === "swapped_down" && n.solo && n.from_group === e.group));                              // moving up alone
@@ -553,7 +595,7 @@ export class Building {
     }
     // a replay ends when its last event has played out: the last walk walked, the last celebration over (or after a long wait, whatever is still moving)
     if (this.mode === "replay" && !this.queue.length && this.clock >= this.nextAt + 1.5 && !this.rides.length && (this.settled() || this.clock >= this.nextAt + this.dur(25))) {
-      this.mode = "idle"; this.say(`Shift ${this.replayCycle}: end of the replay`, 4); const done = this.onEnd; this.finish(); done?.();
+      this.mode = "idle"; this.say(`End of the replay of ${this.replayTitle}`, 4); const done = this.onEnd; this.finish(); done?.();
     }
     this.runRides();
     this.lift.y += (this.lift.ty - this.lift.y) * clamp(dt * sp * 3.2, 0, 1);
@@ -676,7 +718,8 @@ export class Building {
   /** The place a held camera looks at, and what to call it. */
   heldPlace() {
     const k = this.manual, L = this.liftW;
-    if (k === "top") return { rect: { x: L, y: 0, w: this.W - L, h: this.skyH + this.hTop }, name: "Top floor: the Audit desk and the CEO's office" };
+    if (k === "top") return { rect: { x: L, y: 0, w: this.W - L, h: this.skyH + this.hTop }, name: this.byId.ROOM ? "Top floor: the Audit desk, the Records Room and the CEO's office" : "Top floor: the Audit desk and the CEO's office" };
+    if (k === "room" && this.byId.ROOM) { const r = this.byId.ROOM; return { rect: { x: r.x - 34, y: r.y - 40, w: r.w + 68, h: r.h + 50 }, name: "The Records Room" }; }      // with room above it for what is said at the table
     if (k === "basement") return { rect: { x: 0, y: this.groundY - 4, w: this.W, h: this.hBase + GROUND_H + 8 }, name: "The basement: the Engine, the price history, the code room and the sandbox" };
     const f = +k; if (!this.floorRect[f]) return null;
     const r = this.floorRect[f];
@@ -703,7 +746,11 @@ export class Building {
       case "transfer": return { follow: e.agent, ids: [e.agent, e.swapped].filter(Boolean), rect: room(g(e.to_group)) };
       case "data_update": return { rect: this.byId.DATA };
       case "battle": return { rect: room(g(e.challenger)) };
-      case "room_opened": case "room_session": case "room_meeting_start": case "room_meeting": { const ids = this.members(e); return { ids, rect: room(g(a(ids[0])?.group)) }; }
+      case "room_meeting_start": case "room_voice": case "room_voice_missed": case "room_decision": case "room_meeting":
+        if (this.byId.ROOM) { const r = this.byId.ROOM; return { ids: this.members(e), rect: { x: r.x - 4, y: r.y - 18, w: r.w + 8, h: r.h + 22 } }; }
+        return { rect: room(g(a(this.members(e)[0])?.group)) };
+      case "tested": if (e.room && this.byId.ROOM) { const r = this.byId.ROOM; return { rect: { x: r.x - 4, y: r.y - 18, w: r.w + 8, h: r.h + 22 } }; } return { rect: room(g(e.agent ? a(e.agent)?.group : e.group)) };
+      case "room_opened": case "room_session": case "room_thinking": { const ids = this.members(e); return { ids, rect: this.byId.ROOM || room(g(a(ids[0])?.group)) }; }
       default: return { rect: room(g(e.agent ? a(e.agent)?.group : e.group)) };
     }
   }
@@ -728,8 +775,9 @@ export class Building {
   /** With no event to show, the camera walks round the building. Each stop says where it is and what is true there. */
   tour() {
     const wd = this.world, stops = [];
-    const state = this.mode === "live" ? "A shift is running." : this.mode === "replay" ? `This is the replay of shift ${this.replayCycle}.`
+    const state = this.mode === "live" ? (this.live?.room ? "The Records Room is in session." : "A shift is running.") : this.mode === "replay" ? `This is the replay of ${this.replayTitle}.`
       : wd.paused ? (wd.hasData ? "The firm is paused: nobody is working." : "The firm is paused. There is no price history yet, so nobody can work.") : "Between shifts: everyone is at their desk.";
+    if (this.byId.ROOM) { const lead = this.firm?.room?.leader; stops.push({ rect: this.byId.ROOM, label: this.firm?.room?.open === false ? "The Records Room is closed." : lead ? `The Records Room: ${lead.name} leads the growth challenge.` : "The Records Room: the three with the most pips and the three with the highest win rate." }); }
     if (this.stars.pips && this.home(this.stars.pips)) stops.push({ rect: this.groups.get(this.agents.get(this.stars.pips).group)?.rect, label: `${this.agents.get(this.stars.pips).name} has the most pips so far (the star on the desk).` });
     stops.push({ rect: this.byId.ENGINE, label: wd.hasData ? `The Engine: ${fmt(wd.ideas)} ideas tested so far, ${fmt(wd.verified)} checked by the Audit desk.` : "The Engine is waiting for price history. Nothing can be tested until it arrives." });
     stops.push({ rect: { x: this.topRect.x + this.land, y: this.topRect.y + 8, w: Math.min(this.topRect.w - this.land, 420), h: this.topRect.h - 8 }, label: "Top floor: the Audit desk re-runs every level-up from scratch." });

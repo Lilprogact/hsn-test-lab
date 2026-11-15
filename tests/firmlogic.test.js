@@ -2,7 +2,7 @@
 // the ticker's lines and the token help. Every figure in these tests is made up; none is shown on the site.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { from500View, auditWords, roomView, roomEntryView, roomAuditWords, madeWords, planShort } from "../js/firmlogic.js";
+import { from500View, auditWords, roomView, roomEntryView, roomAuditWords, madeWords, planShort, roomLiveView, roomSessionCost, ROOM_SESSION } from "../js/firmlogic.js";
 import { PACES, nextShift, readiness, scoreboard, eventLine, tokenHelp, MIN_TRADES_FOR_WIN_RANK, SHIFT, shiftsLeft, shiftPlan, shiftPlanWords, minutesUsedThisMonth, minutesNote, lookWords, CODE_WORDS } from "../js/firmlogic.js";
 
 test("the four paces match the engine's schedules", () => {
@@ -409,8 +409,115 @@ test("the room's real events each become one plain line", () => {
   assert.equal(line({ kind: "room_entry", agent: "A014", idea: "I11050", plan: "20% of the balance on every set" }).text, "Kelra Ravenmere enters the growth challenge with I11050 (20% of the balance on every set)");
   assert.deepEqual([line({ kind: "room_leader", agent: "A032", made: 2701.6 }).text, line({ kind: "room_leader", agent: "A032", made: 2701.6 }).cls], ["Yelwen Kingsshaw takes the lead in the growth challenge: made £2,702 on the months nobody has seen", "big"]);
   assert.equal(line({ kind: "room_put_forward", agent: "A014", idea: "I15001" }).text, "Kelra Ravenmere puts I15001 forward for the growth challenge");
-  assert.equal(line({ kind: "room_meeting_start", members: ["A032"] }).text, "The Records Room sits down to agree a joint strategy");
-  assert.equal(line({ kind: "room_meeting", strategy: "I15200" }).text, "The Records Room agrees its joint strategy I15200");
+  assert.equal(line({ kind: "room_meeting_start", members: ["A032"] }).text, "The Records Room meets: the six sit at one table and everyone's work goes on it");
+  assert.equal(line({ kind: "room_meeting", strategy: "I15200" }).text, "The Records Room agrees its joint strategy I15200", "a meeting on record from before the room voted");
   assert.equal(line({ kind: "ceo_reward", agent: "A032", made: 2701.6 }).text, "The CEO rewards Yelwen Kingsshaw: the best in the growth challenge (made £2,702 on the months nobody has seen)");
   assert.equal(line({ kind: "tested", agent: "A032", pips: 44104.9, win: 46.6, by: "records room" }).text, "Yelwen Kingsshaw: +44,105 pips, 47% wins (the Records Room's search)");
+});
+
+test("a session of the room, event by event: alone, then together, in plain lines", () => {
+  const name = (id) => ({ A032: "Yelwen Kingsshaw", A013: "Nelen Yewley" }[id] || id), line = (e) => eventLine({ at: "t", ...e }, name);
+  assert.deepEqual([line({ kind: "room_thinking", members: ["A032"], session: 3 }).text, line({ kind: "room_thinking", members: ["A032"], session: 3 }).cls],
+    ["The Records Room, session 3: its six think first, each alone at its own desk", "big"]);
+  assert.equal(line({ kind: "looked", agent: "A013", tool: "growth_check", what: "the growth challenge for I04158" }).text, "Nelen Yewley asks the Engine how I04158 does in the growth challenge (practice months)");
+  assert.deepEqual([line({ kind: "room_brought", agent: "A013", idea: "I15301", pips: 15545.6, win: 70.8 }).text, line({ kind: "room_brought", agent: "A013", idea: "I15301", pips: 15545.6, win: 70.8 }).cls],
+    ["Nelen Yewley has finished thinking alone and brings I15301 to the room: +15,546 pips, 71% wins", "up"]);
+  assert.equal(line({ kind: "room_brought", agent: "A013", idea: "I15302", pips: -120.4, win: 40 }).cls, "down");
+  assert.equal(line({ kind: "room_brought", agent: "A013", idea: null }).text, "Nelen Yewley has finished thinking alone and brings nothing new this time");
+  assert.equal(line({ kind: "room_voice", agent: "A032", vote: "merge", say: " I would take its exit. " }).text, 'Yelwen Kingsshaw at the table (wants one joint strategy): "I would take its exit."');
+  assert.equal(line({ kind: "room_voice", agent: "A013", vote: "keep_separate", say: "They do not fit." }).text, 'Nelen Yewley at the table (wants the ideas kept apart): "They do not fit."');
+  assert.equal(line({ kind: "room_voice_missed", agent: "A013", error: "timed out" }).text, "Nelen Yewley did not speak at the table (the call did not come back)");
+  assert.equal(line({ kind: "room_decision", decision: "merge", merge: 4, keep: 2 }).text, "The Records Room votes 4 to 2 to make ONE joint strategy");
+  assert.equal(line({ kind: "room_decision", decision: "keep_separate", merge: 3, keep: 3 }).text, "The Records Room votes 3 to 3 to keep its ideas apart");
+  assert.equal(line({ kind: "room_decision", decision: "no_quorum", merge: 1, keep: 0 }).text, "The Records Room could not decide: too few of its six spoke");
+  assert.equal(line({ kind: "tested", agent: "A032", idea: "I15310", pips: 30120.5, win: 55.2, by: "records room meeting", room: true }).text,
+    "Yelwen Kingsshaw: +30,121 pips, 55% wins (the Records Room's meeting had the Engine test I15310)");
+  assert.equal(line({ kind: "room_meeting", decision: "merge", strategy: "I15310", pips: 30120.5, win: 55.2 }).text, "The Records Room's meeting ends: its joint strategy is I15310 (+30,121 pips, 55% wins)");
+  assert.equal(line({ kind: "room_meeting", decision: "keep_separate", strategy: null }).text, "The Records Room's meeting ends: its ideas stay apart");
+  assert.equal(line({ kind: "room_meeting", decision: "merge", strategy: null }).text, "The Records Room's meeting ends: it voted for one strategy, but none could be written down this time");
+});
+
+const card = (idea, pips, win, sets = 144) => ({ idea, pips, win_rate_pct: win, sets, pnl_gbp: 1000 });
+function sessionRoom(decision = "merge") {
+  const one = decision === "merge";
+  const voices = {
+    A032: { say: "I15301 keeps 37,829 pips at 53.5% wins. I would take Nelen's two-a-day limit.", vote: "merge", take_from: [{ agent: "A013", what: "its two sets a day limit" }], next: "try the limit on my record", proposal_idea: "I15311" },
+    A014: { say: "The win-rate side trades too little to carry my pips.", vote: one ? "merge" : "keep_separate", take_from: [], next: "raise confidence to 0.7", unverified: ["99.9"] },
+  };
+  const meeting = { cycle: 100, at: "2026-11-15T13:20:00Z", think: 3, decision, votes: { merge: one ? 2 : 1, keep_separate: one ? 0 : 1, silent: 1 },
+    brought: { A032: { ...card("I15301", 37829, 53.5), hypothesis: "raise confidence and cap the day" }, A014: null, A013: { ...card("I15303", 15545.6, 70.8, 48), hypothesis: "trade the tp3 exit" } },
+    voices, idea: one ? "I15310" : null, plan: one ? { type: "percent", value: 15 } : null, rules: one ? { instrument: "XAUUSD" } : null, result: one ? card("I15310", 30120.5, 55.2, 210) : null,
+    why: one ? "Yelwen's entries with Nelen's limit." : "", credits: one ? ["A013", "A032"] : [], credit_notes: one ? { A032: ["its entries"], A013: ["its two sets a day limit"] } : {},
+    ideas: one ? [{ idea: "I15310", by: "room", result: card("I15310", 30120.5, 55.2, 210) }, { idea: "I15311", by: "A032", result: card("I15311", 28849.3, 47.3, 245) }] : [],
+    learned: one ? ["A single-target exit, so a small account can open it."] : [], minutes: "firm/minutes/cycle0100-ROOM-S3.md", cost_usd: 0.61 };
+  const f = roomFirm({ thinks: 3, meetings: [{ cycle: 99, minutes: "firm/minutes/cycle0099-ROOM.md" }, meeting],
+    last_think: { session: 3, at: "2026-11-15T13:27:00Z", seconds: 722, cost_usd: 2.4312, ai_calls: 13, allowance_usd: 5.2, model: "claude-opus-5-5", effort: "high", replay: "firm/replays/room.json",
+      members: { A032: { came_back: true, idea: "I15301", lookups: 9, cost_usd: 0.31 }, A014: { came_back: false, idea: null, lookups: null, cost_usd: 0.02 }, A013: { came_back: true, idea: "I15303", lookups: 11, cost_usd: 0.35 } },
+      meeting: { decision, votes: meeting.votes, idea: meeting.idea }, engine: { tested: 60, found_in_library: 9, mixes: 0 }, warnings: [], errors: [] } });
+  f.room.members.A032.last_turn = { think: 3, ok: true, idea: "I15301", note: "The 0.7 confidence cut keeps most of the pips.", calls: 9, looked: ["by session", "the growth challenge for I15301"] };
+  f.room.members.A014.last_turn = { think: 3, ok: false, idea: null, note: "", calls: 0, error: "timed out" };
+  f.room.members.A013.last_turn = { think: 3, ok: true, idea: "I15303", note: "tp3 lets a small account open it.", calls: 11 };
+  return f;
+}
+
+test("the room's last session: who thought alone, what each brought and said in its own words, the vote and what came of it", () => {
+  const v = roomView(sessionRoom("merge"));
+  assert.equal(v.thinks, 3);
+  assert.equal(v.think.line, "Session 3: 2 of 3 thought alone, then the room voted 2 to 0 to make one joint strategy (I15310). It took 12 minutes and $2.43 of AI (13 calls, claude-opus-5-5, high effort).");
+  assert.equal(v.think.replay, "firm/replays/room.json");
+  const m = v.meeting;
+  assert.equal(m.session, 3); assert.equal(m.one, true);
+  assert.equal(m.votesLine, "2 wanted one joint strategy, 0 wanted to keep the ideas apart, 1 did not speak.");
+  assert.equal(m.outcome, "More wanted one than not, so the room made ONE joint strategy.");
+  assert.deepEqual(m.joint, { idea: "I15310", line: "30,121 pips · 55.2% wins · 210 trades", why: "Yelwen's entries with Nelen's limit.", plan: "15% a trade", credit: ["Yelwen Kingsshaw: its entries", "Nelen Yewley: its two sets a day limit"] });
+  assert.deepEqual(m.proposals, [{ idea: "I15311", by: "Yelwen Kingsshaw", line: "28,849 pips · 47.3% wins · 245 trades" }]);
+  assert.deepEqual(m.learned, ["A single-target exit, so a small account can open it."]);
+  const [yel, kel, nel] = m.seats;
+  assert.deepEqual([yel.name, yel.brought.idea, yel.brought.line, yel.spoke, yel.voteWords, yel.proposal], ["Yelwen Kingsshaw", "I15301", "37,829 pips · 53.5% wins · 144 trades", true, "wants one joint strategy", "I15311"]);
+  assert.equal(yel.say, "I15301 keeps 37,829 pips at 53.5% wins. I would take Nelen's two-a-day limit.", "its own words, as recorded");
+  assert.deepEqual(yel.take, ["Nelen Yewley: its two sets a day limit"]); assert.equal(yel.note, "The 0.7 confidence cut keeps most of the pips."); assert.equal(yel.lookups, 9);
+  assert.deepEqual([kel.brought, kel.alone, kel.spoke, kel.unverified], [null, "Its own turn did not come back, so it brought nothing new.", true, ["99.9"]], "a member whose turn failed still sat at the table");
+  assert.deepEqual([nel.brought.idea, nel.spoke, nel.voteWords, nel.say], ["I15303", false, "did not speak", ""]);
+  // kept apart: nothing is claimed that did not happen
+  const k = roomView(sessionRoom("keep_separate"));
+  assert.equal(k.meeting.one, false); assert.equal(k.meeting.joint, null); assert.deepEqual(k.meeting.proposals, []);
+  assert.equal(k.meeting.outcome, "The room did not want one strategy this time, so its ideas stay apart. Nobody has to merge.");
+  assert.match(k.think.line, /then the room voted 1 to 1 to keep its ideas apart\. /);
+  // a room that has never had a session of thinking and meeting
+  const plain = roomView(roomFirm());
+  assert.equal(plain.think, null); assert.equal(plain.meeting, null, "a meeting from before the room voted has no voices to show");
+  assert.equal(plain.seats[0].alone, "Has not had a turn of its own in the room yet.");
+});
+
+test("a session of the room while it runs: which part it is in, what each of the six is doing, who has said what", () => {
+  const f = sessionRoom(), now = Date.parse("2026-11-15T13:20:30Z");
+  const live = (room, extra = {}) => ({ mode: "firm", cycle: 100, stage: "The Records Room: each of the six is thinking on its own", percent: 30, updated_at: "2026-11-15T13:20:00Z", elapsed_s: 185, room, ...extra });
+  assert.equal(roomLiveView(null, f, now), null); assert.equal(roomLiveView({ mode: "firm", stage: "Agents thinking", updated_at: "2026-11-15T13:20:00Z" }, f, now), null, "an ordinary shift is not a session of the room");
+  const t = roomLiveView(live({ session: 4, phase: "thinking", members: { A032: { state: "researching", detail: "by session" }, A014: { state: "brought", idea: "I15320", pips: 812.4, win: 51.2, sets: 40 }, A013: { state: "researching", detail: "the growth challenge for I04158" } }, voices: {}, votes: null }), f, now);
+  assert.equal(t.running, true); assert.equal(t.session, 4); assert.equal(t.phaseWords, "Alone: each of the six is thinking on its own"); assert.equal(t.minutes, 3);
+  assert.deepEqual(t.steps.map((x) => x.state), ["now", "todo", "todo"]);
+  assert.deepEqual(t.members.map((m) => [m.name, m.doing, m.busy, m.done]), [["Yelwen Kingsshaw", "asks the Engine for its results by session", true, false],
+    ["Kelra Ravenmere", "finished alone: brings I15320 (812 pips, 51.2% wins, 40 trades)", false, true], ["Nelen Yewley", "asks the Engine about the growth challenge for I04158", true, false]]);
+  assert.equal(t.finished, 1); assert.equal(t.of, 3);
+  const m = roomLiveView(live({ session: 4, phase: "meeting", members: { A032: { state: "in_meeting" }, A014: { state: "in_meeting" }, A013: { state: "in_meeting" } },
+    voices: { A032: { vote: "merge", say: "I would take its exit." } }, votes: null }), f, now);
+  assert.deepEqual(m.steps.map((x) => x.state), ["done", "now", "todo"]); assert.equal(m.spoke, 1); assert.equal(m.members[0].say, "I would take its exit."); assert.equal(m.members[0].vote, "merge"); assert.equal(m.votesLine, "");
+  const e = roomLiveView(live({ session: 4, phase: "engine", members: {}, voices: {}, votes: { merge: 1, keep_separate: 2, silent: 0, decision: "keep_separate" } }), f, now);
+  assert.deepEqual(e.steps.map((x) => x.state), ["done", "done", "now"]); assert.equal(e.votesLine, "The vote: 2 to 1 to keep the ideas apart.");
+  const done = roomLiveView(live({ session: 4, phase: "done", members: {}, voices: {}, votes: { merge: 3, keep_separate: 0, decision: "merge" } }, { stage: "Cycle finished" }), f, now);
+  assert.equal(done.running, false); assert.deepEqual(done.steps.map((x) => x.state), ["done", "done", "done"]); assert.equal(done.votesLine, "The vote: 3 to 0 for ONE joint strategy.");
+  assert.equal(roomLiveView(live({ session: 4, phase: "thinking", members: {} }), f, now + 7 * 60 * 1000).running, false, "a live file that has gone quiet is not shown as running");
+});
+
+test("before a session of the room is started, its cost is said in the firm's own figures", () => {
+  const f = roomFirm(); f.budget = { firm_spent_usd: 181.08, firm_budget_usd: 200 };
+  const c = roomSessionCost(f, 1818);
+  assert.equal(c.ok, true); assert.equal(c.left.toFixed(2), "18.92"); assert.equal(c.minutes, ROOM_SESSION.githubMinutes);
+  assert.equal(c.line, "About $2.50 of AI (every call has a ceiling, so never more than $6.10; $18.92 of this month's $200 is left) and about 8 GitHub minutes (1,818 of the free 2,000 are used this month).");
+  const after = sessionRoom(); after.budget = { firm_spent_usd: 197.4, firm_budget_usd: 200 };
+  const d = roomSessionCost(after);
+  assert.equal(d.line, "The last one cost $2.43 of AI (every call has a ceiling, so never more than $2.60; $2.60 of this month's $200 is left) and about 15 GitHub minutes.", "once one has been run, its real cost and time are what is quoted");
+  const poor = roomFirm(); poor.budget = { firm_spent_usd: 199.5, firm_budget_usd: 200 };
+  assert.equal(roomSessionCost(poor).ok, false); assert.match(roomSessionCost(poor).why, /^\$0\.50 is left of this month's AI budget, and a session needs at least \$1\.00\./);
+  assert.equal(roomSessionCost({}).ok, false);
 });

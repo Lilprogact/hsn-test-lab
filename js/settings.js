@@ -4,7 +4,7 @@ import * as vault from "./vault.js";
 import * as gh from "./github.js";
 import { state, startSettingsWorkflow, loadShared, switchView } from "./app.js";
 import { ukDateTime } from "./clock.js";
-import { h, card, stat, table, badge, field, select, input, num, pct, money } from "./ui.js";
+import { h, fill, card, stat, table, badge, field, select, input, num, pct, money } from "./ui.js";
 import { exportView, matchView, TV_STEPS } from "./dataview.js";
 
 function permissionWords(can) {
@@ -162,7 +162,7 @@ export class SettingsView {
       if (f.error) { this.feedEl.replaceChildren(h("p", { class: "warnc" }, `${f.error} (checked ${ukDateTime(f.imported_at)})`)); return; }
       const rel = f.release || {};
       const rows = (f.assets || []).map((a) => ({ File: a.name, Kind: a.kind, Size: `${num((a.bytes || 0) / 1048576, 1)} MB`, Checksum: a.checksum || "—", "Date range": a.date_from ? `${a.date_from} → ${a.date_to || "?"}` : "—", Extracted: a.extracted ? `${num(a.extracted.files, 0)} files` : "—" }));
-      this.feedEl.replaceChildren(
+      fill(this.feedEl,
         h("p", {}, badge(`release ${rel.tag || "?"} · ${ukDateTime(rel.published_at)}`, "good"), " ", badge(`imported ${ukDateTime(f.imported_at)}`), " ",
           f.imported?.alerts_files ? badge(`${f.imported.alerts_files} alert files`) : null, " ", f.imported?.research_files ? badge(`${f.imported.research_files} research files`) : null),
         table(["File", "Kind", "Size", "Checksum", "Date range", "Extracted"], rows),

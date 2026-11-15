@@ -7,9 +7,9 @@ import { rankingBadge } from "./dataview.js";
 import * as gh from "./github.js";
 import { state, startRun, liveText } from "./app.js";
 import { ukDateTime } from "./clock.js";
-import { h, card, stat, table, badge, field, select, input, money, num, pct, signed, openModal, closeModal, mdLite } from "./ui.js";
+import { h, fill, card, stat, table, badge, field, select, input, money, num, pct, signed, openModal, closeModal, mdLite } from "./ui.js";
 import { Building, LEVEL_COLORS, BAR_COLORS, isRunning, coverageWorld } from "./building.js";
-import { from500View, auditWords, roomView, roomEntryView } from "./firmlogic.js";
+import { from500View, auditWords, roomView, roomEntryView, roomLiveView, roomSessionCost } from "./firmlogic.js";
 import { barChart } from "./charts.js";
 import { PACES, nextShift, readiness, scoreboard, eventLine, tokenHelp, shiftPlan, shiftPlanWords, minutesUsedThisMonth, minutesNote } from "./firmlogic.js";
 import { ChallengeReplay } from "./replay.js";
@@ -94,7 +94,7 @@ export class FirmView {
   show() { this.load().then(() => this.schedulePoll()); }
   schedulePoll() {
     if (this.timer) clearTimeout(this.timer);
-    this.timer = setTimeout(async () => { if (!this.root.hidden && document.visibilityState !== "hidden") await this.refreshLive(); this.schedulePoll(); }, isRunning(this.live) ? 15000 : 45000);
+    this.timer = setTimeout(async () => { if (!this.root.hidden && document.visibilityState !== "hidden") await this.refreshLive(); this.schedulePoll(); }, isRunning(this.live) || this.busy ? 15000 : 45000);
   }
 
   async load() {
@@ -127,7 +127,7 @@ export class FirmView {
       if (was && !now) { await this.load(); return; }          // the shift has just finished: read its results
       if (now && this.building?.mode === "replay") this.building.stopReplay(true);      // a real shift takes over from the replay
       this.building?.applyLive(this.live);
-      this.paintControl(); this.paintTicker();
+      this.paintControl(); this.paintTicker(); this.paintRoomLive(); this.syncRoomCamera();
     } catch { /* keep the last state */ }
   }
 
@@ -137,17 +137,26 @@ export class FirmView {
     const f = this.firm, l = this.live, running = isRunning(l), ready = readiness(state, this.setup, f);
     const c = l?.counters || {};
     let button, line, sub = null;
+    // a session of the Records Room is running (it runs beside a paused firm too): say so, live, whoever started it
+    const rl = roomLiveView(l, f), roomRunning = !!rl?.running;
+    const roomLine = () => h("span", {}, badge("LIVE", "good"), ` The Records Room, session ${rl.session} · ${rl.phaseWords}`
+      + (rl.phase === "thinking" ? ` · ${rl.finished} of ${rl.of} have finished` : rl.phase === "meeting" ? ` · ${rl.spoke} of ${rl.of} have spoken` : "") + ` · ${rl.minutes} min · `,
+      h("button", { class: "link", type: "button", onclick: () => this.go("room") }, "watch it in the Records Room"));
+    const bar = () => h("div", { class: "progress shift-bar", role: "progressbar", "aria-valuenow": Math.round(l.percent || 0), "aria-valuemin": 0, "aria-valuemax": 100 }, h("div", { style: `width:${Math.max(2, Math.min(100, l.percent || 0))}%` }));
     if (this.busy) {
       button = h("button", { class: "start-btn", disabled: true }, this.busy);
-      line = "Sent to GitHub. This takes about a minute; you can stay on this page.";
+      line = roomRunning ? roomLine() : "Sent to GitHub. This takes about a minute; you can stay on this page.";
+      if (roomRunning) sub = bar();
     } else if (f.paused) {
       button = h("button", { class: "start-btn go", disabled: ready.ok ? null : true, onclick: () => this.startDialog() }, f.cycle ? "▶ Start again" : "▶ Start the company");
-      line = !ready.ok ? ready.why : f.cycle ? `Paused after shift ${f.cycle}. Everything it learned is saved; Start carries on from there.`
+      line = roomRunning ? roomLine() : !ready.ok ? ready.why : f.cycle ? `Paused after shift ${f.cycle}. Everything it learned is saved; Start carries on from there.`
         : `Ready. All ${Object.keys(f.agents || {}).length} agents are at their desks; nothing moves until you press Start.`;
-      if (!ready.ok && ready.setup) sub = h("button", { class: "secondary small", onclick: () => { location.hash = "#setup"; location.reload(); } }, "Open Setup");
+      if (roomRunning) sub = h("div", {}, bar(), h("span", { class: "muted small" }, "The firm itself is still paused: only the room's six are working."));
+      else if (!ready.ok && ready.setup) sub = h("button", { class: "secondary small", onclick: () => { location.hash = "#setup"; location.reload(); } }, "Open Setup");
     } else {
       button = h("button", { class: "start-btn stop", onclick: () => this.pause() }, "⏸ Pause");
-      if (running) {
+      if (roomRunning) { line = roomLine(); sub = bar(); }
+      else if (running) {
         line = h("span", {}, badge("LIVE", "good"), ` shift ${l.cycle} · ${liveText(l)} · ${num(c.ideas_tested ?? 0, 0)} ideas tested`
           + (c.engine_search ? ` (${num(c.engine_search, 0)} by the Engine's own search)` : "") + ` · ${num(c.trades_tested ?? 0, 0)} trades through the Engine`
           + (c.code_read ? ` · ${c.code_read} looks at the code` : "") + (c.code_handed_in ? ` · ${c.code_handed_in} pieces of code handed in` : "")
@@ -209,6 +218,7 @@ export class FirmView {
     const f = this.firm;
     this.stopLoop();
     this.building?.destroy(); this.building = null;
+    this.roomReplay = null; this.roomLiveEl = null; this.roomStageSlot = null; this.roomNote = null;
     if (!f) {
       this.root.replaceChildren(card("HSN Capital", h("p", { class: "muted" }, "The firm's files are not in the engine repository yet. They are created by the first shift."),
         h("button", { class: "primary", onclick: () => this.runCycle(true) }, "Run the first shift now")));
@@ -249,6 +259,7 @@ export class FirmView {
       card(`The whole building: all ${n} agents (tap a desk or a room)`, h("div", { class: "building-wrap" }, canvas), legend, this.replayBox),
       card("What just happened", h("p", { class: "help" }, "The latest real events, newest first. Each test is the Engine's result on real price history; nothing here is written by the AI."), this.tickerEl));
     // the other pages are built when first opened (they are long)
+    this.stageHome = this.stageWrap.parentElement;         // the Company page's camera card: the camera goes to the Records Room's page while that is open, and comes back
     this.panels = { company, room: null, people: null, code: null, records: null, ceo: null };
     this.panelBox = h("div", {}, company);
     this.root.replaceChildren(h("div", { class: "stack" }, head, nav, this.pageHelp, this.panelBox));
@@ -263,6 +274,7 @@ export class FirmView {
       this.building.setData(f, this.live);
       this.building.applyLive(this.live);
       window.hsnBuilding = this.building;                 // handy for checks from the console; holds no secrets
+      this.syncRoomCamera();
       this.startLoop();
     });
   }
@@ -278,7 +290,8 @@ export class FirmView {
       try { if (on) (document.exitFullscreen || document.webkitExitFullscreen).call(document); else (wrap.requestFullscreen || wrap.webkitRequestFullscreen).call(wrap); } catch { /* the browser said no: the picture stays where it is */ }
     } }, "⤢ Whole screen");
     if (wrap && !wrap.dataset.fs) { wrap.dataset.fs = "1"; for (const ev of ["fullscreenchange", "webkitfullscreenchange"]) document.addEventListener(ev, () => this.building?._resize?.()); }
-    this.camBar.replaceChildren(chip("● Follow the action", null, "The camera goes to wherever the latest real event is"), h("span", { class: "muted small" }, "or hold it on:"),
+    fill(this.camBar, chip("● Follow the action", null, "The camera goes to wherever the latest real event is"), h("span", { class: "muted small" }, "or hold it on:"),
+      b?.byId?.ROOM ? chip("Records Room", "room", "The room where the six meet, on the top floor") : null,
       chip("Top", "top", "The Audit desk and the CEO's office"), ...[5, 4, 3, 2, 1].map((f) => chip(`Floor ${f}`, String(f), LEVELS[f] + "s")), chip("Basement", "basement", "The Engine, the price history, the code room and the sandbox"),
       canFull ? full : null);
   }
@@ -294,8 +307,29 @@ export class FirmView {
       if (page === "records") this.panels.records = h("div", { class: "stack" }, this.firmPage(), this.brainsCard());
       if (page === "ceo") this.panels.ceo = this.ceoOffice();
     }
+    if (page !== "room" && this.building?.mode === "replay" && /Records Room/.test(this.building.replayTitle || "")) this.building.stopReplay(true);      // a replay of the room's session belongs to the room's page
     this.panelBox.replaceChildren(this.panels[page]);
-    if (page === "company") { this.building?._resize?.(); this.startLoop(); } else this.stopLoop(false);
+    this.moveCamera(page);
+    if (page === "company") { this.building?._resize?.(); this.startLoop(); } else this.stopLoop(page === "room");      // the room's page shows the room, not the replay of the last shift
+    if (page === "room") { this.paintRoomLive(); this.syncRoomCamera(); }
+  }
+
+  /** The camera (one picture) is on the Company page, and on the Records Room's page while that is open. */
+  moveCamera(page) {
+    const wrap = this.stageWrap; if (!wrap) return;
+    if (page === "room" && this.roomStageSlot) { if (wrap.parentElement !== this.roomStageSlot) this.roomStageSlot.append(wrap); }
+    else if (this.stageHome && wrap.parentElement !== this.stageHome) this.stageHome.insertBefore(wrap, this.camBar && this.camBar.parentElement === this.stageHome ? this.camBar : null);
+    requestAnimationFrame(() => { this.building?.resizeStage(); this.building?.draw?.(); });
+  }
+
+  /** On the Records Room's page the camera stays on the room, and follows the action while a session runs or is replayed. */
+  syncRoomCamera() {
+    const b = this.building; if (!b) return;
+    const moving = isRunning(this.live) || b.mode === "replay";
+    if (this.page === "room") { if (moving) { if (b.manual === "room") b.follow(); } else if (b.byId?.ROOM && b.manual !== "room") b.hold("room"); }
+    else if (this.roomHeld && b.manual === "room") b.follow();
+    this.roomHeld = this.page === "room" && b.manual === "room";
+    this.paintCamBar();
   }
 
   paintScore() {
@@ -323,11 +357,12 @@ export class FirmView {
       if (rv) {
         const who = (id, name) => h("button", { class: "chip", type: "button", onclick: () => this.openAgent(id) }, name);
         const lead = rv.challenge.leader;
-        this.roomEl.replaceChildren(h("h3", {}, rv.name, " ", rv.open ? badge("open", "good") : badge("closed", "warn")),
+        fill(this.roomEl, h("h3", {}, rv.name, " ", rv.open ? badge("open", "good") : badge("closed", "warn")),
           h("p", { class: "help" }, "The three with the most pips and the three with the highest win rate, working on big pips AND a high win rate, and on the growth challenge: start from £100 to £500 and make the most money."),
           ...rv.sides.map((sd) => h("div", { class: "row" }, h("span", { class: "muted small room-side-label" }, sd.key === "pips" ? "Most pips:" : "Highest win rate:"), ...sd.members.map((m) => who(m.id, m.name)))),
           h("p", { class: lead ? "good" : "muted" }, lead ? lead.line : rv.challenge.note),
-          h("div", { class: "row" }, h("button", { class: "secondary", onclick: () => this.go("room") }, "Open the Records Room")));
+          rv.think ? h("p", { class: "muted small" }, rv.think.line) : null,
+          h("div", { class: "row" }, h("button", { class: "secondary", onclick: () => this.go("room") }, rv.open ? "Open the Records Room: watch the six think and meet" : "Open the Records Room")));
       }
     }
   }
@@ -346,6 +381,50 @@ export class FirmView {
         h("div", { class: "row" }, open(false)), h("p", { class: "muted small" }, cost));
     }
     const li = (x) => h("li", {}, x);
+    // The room at work: the camera (it comes to this page while it is open), what each of the six is doing right now
+    // while a session runs, and one button for a whole session: alone, then together, then the Engine.
+    this.roomStageSlot = h("div", { class: "room-stage" });
+    this.roomLiveEl = h("div", { class: "room-live" });
+    this.roomNote = h("p", { class: "muted small", role: "status" });
+    const price = roomSessionCost(f, minutesUsedThisMonth(state.minutes));
+    const think = h("button", { class: "primary", disabled: v.open && price.ok ? null : true, onclick: () => {
+      if (!confirm("Run a session of the Records Room now?\n\nEach of its six thinks alone first (real AI, with the Engine's research tools). Then they meet, see each other's work, and each says for itself whether it wants ONE joint strategy. "
+        + `The Engine counts the votes, tests whatever they put forward and judges the growth challenge.\n\nIt costs: ${price.line}\n\nThe firm itself stays ${f.paused ? "paused" : "as it is"}: only the room's six work.`)) return;
+      this.act("The Records Room is in session…", { action: "room", do: "think" }, (res) => this.roomThought(res));
+      this.paintRoomLive();
+    } }, "▶ Run a session: the six think alone, then meet");
+    const watch = v.think?.replay ? h("button", { class: "secondary", onclick: () => this.watchRoom() }, `▶ Watch session ${v.think.session} again`) : null;
+    const atWork = card("The room at work", this.roomStageSlot, this.roomLiveEl,
+      h("div", { class: "row" }, v.open ? think : null, watch), this.roomNote,
+      h("p", { class: "help" }, "A session has three parts. 1 · Alone: each of the six thinks on its own at its own desk, with the Engine's research tools; none of them sees what another finds. "
+        + "2 · Together: they take the lift up to the Records Room, everyone's work goes on one table, and each says in its own words what it would take from the others and whether the room should make ONE joint strategy. "
+        + "More for than against and the room writes one down; otherwise the ideas stay apart. 3 · The Engine tests whatever was put forward and judges the growth challenge on the months nobody has seen."),
+      v.open ? h("p", { class: "muted small" }, `A session costs: ${price.line}`) : h("p", { class: "muted small" }, "The room is closed, so no session can be run."),
+      v.open && !price.ok ? h("p", { class: "warnc small" }, price.why) : null);
+    // The room's last meeting: what each brought from thinking alone and what each said at the table, in its own words
+    const seatTile = (x) => h("div", { class: `room-member ${x.vote === "merge" ? "up" : ""}` },
+      h("div", { class: "row between" }, h("button", { class: "link room-name", type: "button", onclick: () => this.openAgent(x.id) }, x.name), h("span", { class: "muted small" }, x.sideWords)),
+      h("p", {}, h("b", {}, "Brought: "), x.brought ? `${x.brought.idea} · ${x.brought.line}` : (x.alone || "no new strategy this time")),
+      x.brought?.hypothesis ? h("p", { class: "muted small" }, `Its idea: ${x.brought.hypothesis}`) : null,
+      x.note ? h("details", {}, h("summary", {}, `Its own note from thinking alone${x.lookups != null ? ` (${x.lookups} questions to the Engine)` : ""}`), h("p", { class: "small" }, x.note)) : null,
+      x.spoke ? h("p", { class: "room-say" }, badge(x.voteWords, x.vote === "merge" ? "good" : "warn"), ` “${x.say}”`) : h("p", { class: "muted" }, "Did not speak at the table."),
+      x.take.length ? h("p", { class: "muted small" }, `Would take from ${x.take.join("; from ")}`) : null,
+      x.next ? h("p", { class: "muted small" }, `Will try next: ${x.next}`) : null,
+      x.unverified.length ? h("p", { class: "warnc small" }, `Numbers in its words that the Engine could not find in what it was shown: ${x.unverified.join(", ")}`) : null);
+    const mtg = v.meeting;
+    const lastMeeting = mtg ? card(`The room's last meeting: ${mtg.session ? `session ${mtg.session}` : `shift ${mtg.cycle}`} (${ukDateTime(mtg.at)} UK)`,
+      v.think && v.think.session === mtg.session ? h("p", { class: "muted small" }, v.think.line) : null,
+      h("p", { class: "help" }, "Each tile is one member: what it brought from thinking alone, and what it said at the table. The words are its own answer, given before it could hear the others, and every number in them is checked against what the Engine showed it."),
+      h("div", { class: "grid two" }, ...mtg.seats.map(seatTile)),
+      h("h3", {}, "The vote"), h("p", {}, h("b", {}, mtg.votesLine), " ", h("span", { class: mtg.one && mtg.joint ? "good" : "" }, mtg.outcome)),
+      mtg.joint ? h("div", { class: "room-leader" }, h("p", {}, h("b", {}, `The joint strategy they wrote down: ${mtg.joint.idea}`), ` · ${mtg.joint.line} on the practice months · money plan: ${mtg.joint.plan}`),
+        mtg.joint.why ? h("p", {}, mtg.joint.why) : null, mtg.joint.credit.length ? h("p", { class: "muted small" }, `Credit: ${mtg.joint.credit.join("; ")}.`) : null) : null,
+      mtg.jointError ? h("p", { class: "warnc small" }, mtg.jointError) : null,
+      mtg.proposals.length ? h("div", {}, h("p", { class: "muted small" }, "Each member's own proposal for the joint strategy was tested by the Engine as well (practice months). Which becomes the room's entry in the growth challenge, the one they agreed, one of these or one of the Engine's mixes, is the Engine's choice on the practice months:"),
+        h("ul", { class: "rules" }, ...mtg.proposals.map((x) => h("li", {}, `${x.by}: ${x.idea} · ${x.line}`)))) : null,
+      mtg.learned.length ? h("div", {}, h("h3", {}, "What the room carries into everyone's own work"), h("ul", { class: "rules" }, ...mtg.learned.map(li))) : null,
+      mtg.recordNote ? h("p", { class: "muted small" }, `A note on this record: ${mtg.recordNote}`) : null,
+      mtg.minutes ? h("div", { class: "row" }, h("button", { class: "secondary small", onclick: () => this.openDoc(mtg.minutes) }, "Read the minutes")) : null) : null;
     const tile = (m) => h("div", { class: `room-member ${m.improved ? "up" : ""}` },
       h("div", { class: "row between" }, h("button", { class: "link room-name", type: "button", onclick: () => this.openAgent(m.id) }, m.name), h("span", { class: "muted small" }, m.where)),
       h("p", { class: "room-record" }, "Pinned record ", h("b", {}, m.recordIdea), ": ", m.record),
@@ -367,8 +446,8 @@ export class FirmView {
     const work = h("button", { class: "secondary", onclick: () => this.act("The Records Room's Engine session is running… (about ten minutes)", { action: "room", do: "work" }, (res) => this.roomSaid(res, "The room's Engine session is done.")) }, "Run the room's Engine work now");
     const close = h("button", { class: "secondary", onclick: () => { if (confirm("Close the Records Room? Its six carry on with their ordinary work. Everything the room did stays on record, and you can open it again.")) this.act("Closing the room…", { action: "room", do: "close" }, () => "The Records Room is closed."); } }, "Close the room");
     const last = v.last ? `Its last Engine session (${ukDateTime(v.last.at)} UK) tested ${num(v.last.tested, 0)} new strategies, found ${num(v.last.found_in_library, 0)} more already in the library and made ${num(v.last.mixes, 0)} mixes.` : "It has not had an Engine session yet.";
-    return h("div", { class: "stack" },
-      card(h("span", {}, v.name, " ", v.open ? badge("open", "good") : badge("closed", "warn"), " ", badge(`${v.sessions} session${v.sessions === 1 ? "" : "s"}`)),
+    return h("div", { class: "stack" }, atWork, lastMeeting,
+      card(h("span", {}, v.name, " ", v.open ? badge("open", "good") : badge("closed", "warn"), " ", badge(`${v.thinks} session${v.thinks === 1 ? "" : "s"} of thinking and meeting`), " ", badge(`${v.sessions} Engine session${v.sessions === 1 ? "" : "s"}`)),
         h("p", {}, v.intro), h("p", { class: "muted small" }, `Opened in shift ${v.openedCycle}${v.openedAt ? ` (${ukDateTime(v.openedAt)} UK)` : ""}. ${last}`), sides),
       card("Big pips and a high win rate: where the room stands", table(v.frontierColumns, v.frontier), h("p", { class: "help" }, v.frontierHelp)),
       card("The growth challenge: start from £100 to £500, make the most money", h("ul", { class: "rules" }, ...c.rules.map(li)),
@@ -382,18 +461,70 @@ export class FirmView {
           h("p", { class: "muted small" }, `Credit: ${v.together.credit.join(" and ") || "the room"}.${v.together.beats ? " Together they beat every member's own entry on the months nobody has seen." : ""}`),
           h("div", { class: "row" }, h("button", { class: "secondary small", onclick: () => this.openRoomEntry("together") }, "See the joint entry")))
           : h("p", { class: "muted" }, "No joint strategy that a small account can open yet."),
-        h("p", { class: "help" }, `The Engine has mixed every pips record with every win-rate record (${v.mixes} mixes: one's strategy with the other's filters, exit, trade limits or charts). When a shift has AI budget the six also meet to agree one joint strategy and money plan; the Engine tests what they agree.`),
-        v.learned.length ? h("div", {}, h("h3", {}, "What the room agreed in its last meeting"), h("ul", { class: "rules" }, ...v.learned.map(li))) : null,
-        v.meetings.length ? h("div", { class: "row" }, ...v.meetings.slice(0, 6).map((m) => h("button", { class: "secondary small", onclick: () => this.openDoc(m.minutes) }, `Minutes, shift ${m.cycle}`))) : h("p", { class: "muted small" }, "The room has not met yet: a meeting needs a shift with AI budget.")),
-      card("Running the room", h("p", { class: "help" }, "In every shift the room's six think first, the room meets, and the Engine searches around their records, mixes them and judges the challenge. You can also run the Engine's part on its own, between shifts."),
+        h("p", { class: "help" }, `The room's joint entry in the growth challenge is the Engine's choice, on the practice months, among everything the room has put together: the Engine's own mixes of every pips record with every win-rate record (${v.mixes} mixes: one's strategy with the other's filters, exit, trade limits or charts), the joint strategy the six wrote down when they voted for one, and each member's own proposal for it.`),
+        v.learned.length ? h("div", {}, h("h3", {}, "What the room agreed to carry into everyone's own work"), h("ul", { class: "rules" }, ...v.learned.map(li))) : null,
+        v.meetings.length ? h("div", { class: "row" }, ...v.meetings.filter((m) => m.minutes).slice(0, 6).map((m) => h("button", { class: "secondary small", onclick: () => this.openDoc(m.minutes) }, m.think ? `Minutes, session ${m.think}` : `Minutes, shift ${m.cycle}`))) : h("p", { class: "muted small" }, "The room has not met yet. Run a session above: the six think alone, then meet.")),
+      card("Running the room", h("p", { class: "help" }, "A session (the button at the top) is the whole thing in one go: the six think alone, meet, and the Engine tests and judges. It works whether the firm is running or paused. In the firm's own shifts the room's six also think first and the room meets every fourth shift. You can also run only the Engine's part, which uses no AI."),
         v.open ? h("label", { class: "chip wide" }, only, "Only the room works: nobody else thinks and the rest of the firm's shift is skipped (shorter shifts; the whole AI budget goes to the room's six)") : null,
         h("div", { class: "row" }, v.open ? work : null, open(true), v.open ? close : null), h("p", { class: "muted small" }, cost)));
   }
 
   roomSaid(res, ok) {
     const r = res?.result || {};
-    if (!r.ok) return r.error || "It could not be done; see the run on GitHub.";
+    if (!r.ok) return r.error || res?.errors?.[0]?.message || "It could not be done; see the run on GitHub.";
     return r.leader ? `${ok} ${r.leader.name} leads the growth challenge.` : `${ok} ${r.leader_note || ""}`;
+  }
+
+  /** What a whole session of the room came to, in one line (from the engine's own result). */
+  roomThought(res) {
+    const r = res?.result || {}, m = r.meeting;
+    if (!r.ok) return r.error || res?.errors?.[0]?.message || "The session could not be run; see the run on GitHub.";
+    const met = !m ? ", but the room did not meet" : m.decision === "merge" ? `, then the room voted ${m.votes?.merge} to ${m.votes?.keep_separate} to make one joint strategy${m.idea ? ` (${m.idea})` : ""}`
+      : m.decision === "keep_separate" ? `, then the room voted ${m.votes?.keep_separate} to ${m.votes?.merge} to keep its ideas apart` : ", but too few spoke for the room to decide";
+    if (r.session == null) return "The session is done. What each brought and said is below.";
+    return `Session ${r.session} is done: ${(r.thought || []).length} of the six thought alone${met}. It cost $${(+r.cost_usd || 0).toFixed(2)} of AI.${r.leader ? ` ${r.leader.name} leads the growth challenge.` : ""} What each brought and said is below.`;
+  }
+
+  /** The room's page while a session runs: which part it is in and what each of the six is doing right now, from the
+   *  live status file. Between sessions: what the last one came to. */
+  paintRoomLive() {
+    const el = this.roomLiveEl; if (!el) return;
+    const lv = roomLiveView(this.live, this.firm);
+    if (lv?.running) {
+      const steps = h("div", { class: "room-steps" }, ...lv.steps.map((x) => h("div", { class: `room-step ${x.state}` }, h("b", {}, x.label), h("span", {}, x.words))));
+      const seats = h("div", { class: "room-seats" }, ...lv.members.map((m) => h("div", { class: `room-seat ${m.busy ? "busy" : ""} ${m.done ? "done" : ""}` },
+        h("div", { class: "row between" }, h("button", { class: "link room-name", type: "button", onclick: () => this.openAgent(m.id) }, m.name), h("span", { class: "muted small" }, m.side === "pips" ? "most pips" : "highest win rate")),
+        h("p", { class: m.busy ? "" : "muted" }, m.busy ? h("span", { class: "dot-live" }) : null, m.doing),
+        m.vote ? h("p", { class: "room-say" }, badge(m.vote === "merge" ? "wants one joint strategy" : "wants the ideas kept apart", m.vote === "merge" ? "good" : "warn"), ` “${m.say}”`) : null)));
+      fill(el, h("p", { class: "room-live-line" }, badge("LIVE", "good"), ` Session ${lv.session} · ${lv.phaseWords} · ${lv.minutes} min so far`), steps, seats,
+        lv.votesLine ? h("p", { class: "good" }, h("b", {}, lv.votesLine)) : null,
+        h("p", { class: "muted small" }, `As of ${ukDateTime(lv.updatedAt)} UK. The picture and this list are about half a minute behind the room; both refresh by themselves.`));
+    } else if (/Records Room is in session/.test(this.busy || "")) {
+      el.replaceChildren(h("p", { class: "room-live-line" }, badge("starting", "warn"), " Sent to GitHub. Its machine takes a minute or two to start; then the six appear here, each thinking alone."));
+    } else {
+      const v = roomView(this.firm);
+      el.replaceChildren(h("p", { class: "muted" }, v?.think ? `${v.think.line} (${ukDateTime(v.think.at)} UK)` : "The room has not had a session of thinking alone and then meeting yet. Press the button to run one and watch it here."));
+    }
+  }
+
+  /** Play the room's latest session again in the building: its real events, in order (firm/replays/room.json). */
+  async watchRoom() {
+    const b = this.building, note = (text) => { if (this.roomNote) this.roomNote.textContent = text; };
+    try {
+      if (!b) return;
+      if (isRunning(this.live)) { note("A session is running now: the picture is live."); return; }
+      if (!state.animations) { note("Movement is switched off (Company page, Replay options), so there is nothing to play."); return; }
+      note("Fetching the session's real events…");
+      const rep = this.roomReplay || (this.roomReplay = await gh.getJson(state.token, state.owner, "firm/replays/room.json"));
+      if (!rep?.events?.length) { note("That session left no events to play."); return; }
+      if (this.page !== "room" || isRunning(this.live)) return;
+      if (b.mode === "replay") b.stopReplay(true);
+      b.follow(); this.roomHeld = false;
+      b.playReplay(rep, { speed: 1,                          // at the speed it happened on screen: the meeting is there to be read
+        onProgress: (i, n, e) => note(`Replay of session ${rep.room_session} (its real events, ${ukDateTime(rep.finished_at)} UK) · ${i} of ${n} · ${this.eventText(e)}`),
+        onEnd: () => { note(`The replay of session ${rep.room_session} has finished.`); this.syncRoomCamera(); } });
+      this.stageWrap?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+    } catch (e) { note(e.message); }
   }
 
   /** One entry of the growth challenge, in full: every account size, every month, and what it became left to run. */
@@ -559,7 +690,7 @@ export class FirmView {
       try {
         const { result } = await startRun("ceo", { action: "ask", who: who.value, question: q.value }, () => {}, { prefix: "ask" });
         const r = result.result || {};
-        answer.replaceChildren(h("p", {}, h("b", {}, r.who?.name || who.value), ": ", r.answer || r.error || "(no answer)"), r.unverified_numbers_flagged?.length ? h("p", { class: "warnc" }, `Numbers not found in their file were flagged: ${r.unverified_numbers_flagged.join(", ")}`) : null);
+        fill(answer, h("p", {}, h("b", {}, r.who?.name || who.value), ": ", r.answer || r.error || "(no answer)"), r.unverified_numbers_flagged?.length ? h("p", { class: "warnc" }, `Numbers not found in their file were flagged: ${r.unverified_numbers_flagged.join(", ")}`) : null);
       } catch (e) { answer.textContent = e.message; }
     } }, "Ask");
     const focus = input("text", f.monthly_focus || "", { placeholder: "e.g. sideways gold, NAS100 at the London open" });
@@ -768,6 +899,7 @@ export class FirmView {
 
   async openRoom(room) {
     if (room.kind === "ceo") { this.go("ceo"); return; }
+    if (room.kind === "records") { this.go("room"); return; }                                           // the Records Room has a page of its own
     if (room.kind === "engine" || room.kind === "data") { this.go("records"); return; }                 // the Engine's and the price history's numbers are on Records
     if (room.kind === "code" || room.kind === "sandbox") { this.go("code"); return; }                   // what the agents read and wrote
     if (room.kind === "manager") {

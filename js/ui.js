@@ -20,6 +20,13 @@ export function h(tag, attrs = {}, ...children) {
   return el;
 }
 
+/** Replace an element's children, leaving out anything that is null, undefined or false. (The DOM's own replaceChildren
+ *  turns a null into the word "null" on the page.) */
+export function fill(el, ...children) {
+  el.replaceChildren(...children.flat().filter((c) => c !== null && c !== undefined && c !== false).map((c) => (c instanceof Node ? c : document.createTextNode(String(c)))));
+  return el;
+}
+
 export const money = (v, d = 0) => (v === null || v === undefined || Number.isNaN(+v)) ? "—" : (v < 0 ? "−£" : "£") + Math.abs(+v).toLocaleString("en-GB", { maximumFractionDigits: d, minimumFractionDigits: d });
 export const num = (v, d = 1) => (v === null || v === undefined || Number.isNaN(+v)) ? "—" : (+v).toLocaleString("en-GB", { maximumFractionDigits: d, minimumFractionDigits: 0 });
 export const pct = (v, d = 1) => (v === null || v === undefined || Number.isNaN(+v)) ? "—" : (+v).toFixed(d) + "%";

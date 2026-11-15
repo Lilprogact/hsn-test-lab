@@ -428,8 +428,128 @@ test("the Records Room shows as labels over its six, who stay at their own desks
   b.apply({ at: "d", kind: "ceo_reward", agent: "A021", idea: "I15182", made: 2701.6 }, true);
   assert.equal(b.agents.get("A021").chip.text, "★ rewarded by the CEO");
   assert.match(b.banner.text, /^The CEO rewards Name21 Surname$/);
-  for (const kind of ["room_entry", "room_put_forward", "room_meeting_start", "room_meeting"]) b.apply({ at: "e", kind, agent: "A003", members: six, idea: "I1" }, true);
+  // a firm file from before the room had a place of its own: its meeting still shows, as labels at the desks
+  assert.equal(b.byId.ROOM, undefined);
+  for (const kind of ["room_entry", "room_put_forward", "room_meeting_start", "room_meeting"]) b.apply({ at: "e", kind, agent: "A003", members: six, idea: "I1", strategy: "I2" }, true);
   assert.equal(b.agents.get("A003").chip.text, "joint strategy agreed");
+  assert.equal(b.agents.get("A003").away, null);
+  b.apply({ at: "e2", kind: "room_meeting", members: six, decision: "keep_separate" }, true);
+  assert.equal(b.agents.get("A003").chip.text, "meeting over", "no joint strategy is claimed when the room kept its ideas apart");
   b.apply({ at: "f", kind: "room_opened", members: six, pips: six.slice(0, 3) }, false);
   assert.equal(b.agents.get("A081").group, seats[5].group, "applied without animation, it moves nobody either");
+});
+
+for (const width of [1150, 762, 362]) {
+  test(`the Records Room is a room on the top floor with a table for its six (canvas ${width}px wide)`, () => {
+    const b = new Building(canvasStub(width), { animations: false });
+    const f = firm(); f.room = { open: true, leader: { name: "Name21 Surname", made_unseen: 3345.68 } };
+    b.setData(f, null);
+    const room = b.byId.ROOM, audit = b.byId.AUDIT, ceo = b.byId.CEO;
+    assert.ok(room && room.kind === "records" && room.floor === 6);
+    assert.ok(audit.x + audit.w <= room.x && room.x + room.w <= ceo.x && ceo.x + ceo.w <= b.W, "the Audit desk, the Records Room and the CEO's office stand side by side");
+    assert.ok(audit.w >= 80 && room.w >= 110 && ceo.w >= 90, `each of the three is wide enough to read (${Math.round(audit.w)}, ${Math.round(room.w)}, ${Math.round(ceo.w)})`);
+    assert.equal(room.y, audit.y); assert.equal(room.h, ceo.h);
+    const t = b.tableOf(room), spots = [0, 1, 2, 3, 4, 5].map((i) => b.spot(room, i));
+    assert.equal(t.per, 6, "six chairs");
+    for (const sp of spots) { assert.ok(sp.table && sp.floor === 6 && sp.x > room.x + 8 && sp.x < room.x + room.w - (t.board ? t.board : 8) && sp.y > room.y + 20 && sp.y < room.y + room.h, "every chair is inside the room, clear of its board"); }
+    assert.ok(spots.every((sp, i) => !i || sp.x - spots[i - 1].x >= 11.9), "nobody sits on top of anybody");
+    const board = b.roomBoard();
+    if (t.board) assert.ok(board.x >= spots[5].x + 8 && board.x + board.w <= room.x + room.w - 2, "the board hangs beside the table, inside the room");
+    assert.equal(b.hit(room.x + room.w / 2, room.y + 6).room.id, "ROOM", "a tap on the room opens it");
+    assert.match(b.heldPlace.call({ ...b, manual: "room", byId: b.byId, liftW: b.liftW }).name, /^The Records Room$/);
+    const stop = b.tour().find((x) => x.rect === room);
+    assert.equal(stop.label, "The Records Room: Name21 Surname leads the growth challenge.");
+    // no room in the firm's file: the top floor is as it was
+    const plain = new Building(canvasStub(width), { animations: false });
+    plain.setData(firm(), null);
+    assert.equal(plain.byId.ROOM, undefined); assert.ok(plain.byId.CEO.w > ceo.w);
+    b.destroy(); plain.destroy();
+  });
+}
+
+test("a session of the Records Room: its six think alone at their desks, meet at the room's table, vote, and go back", () => {
+  const b = new Building(canvasStub(1150), { animations: true });
+  const f = firm(); f.room = { open: true };
+  b.setData(f, null);
+  const six = ["A003", "A021", "A047", "A061", "A066", "A081"], room = b.byId.ROOM;      // floors 1, 1, 1, 2, 2, 4
+  const at = (id) => b.agents.get(id);
+  const inRoom = (a) => a.x > room.x && a.x < room.x + room.w && a.y > room.y && a.y < room.y + room.h;
+  const events = [
+    { at: "t0", kind: "room_thinking", members: six, session: 1 },
+    { at: "t1", kind: "thinking", agent: "A003" }, { at: "t1", kind: "thinking", agent: "A061" },
+    { at: "t2", kind: "looked", agent: "A003", tool: "growth_check", what: "the growth challenge for I00007" },
+    { at: "t3", kind: "tested", agent: "A003", idea: "I00101", pips: 812.4, win: 51.2 },
+    { at: "t4", kind: "room_brought", agent: "A003", idea: "I00101", pips: 812.4, win: 51.2 },
+    { at: "t4", kind: "room_brought", agent: "A061", idea: null },
+    { at: "t5", kind: "room_meeting_start", members: six, session: 1, brought: { A003: { idea: "I00101", pips: 812.4, win_rate_pct: 51.2 }, A061: null } },
+    { at: "t6", kind: "room_voice", agent: "A021", vote: "merge", say: "I would take its exit.", take_from: ["A003"] },
+    { at: "t6", kind: "room_voice", agent: "A003", vote: "keep_separate", say: "They do not fit.", take_from: [] },
+    { at: "t6", kind: "room_voice_missed", agent: "A081", error: "timed out" },
+    { at: "t7", kind: "room_decision", members: six, decision: "merge", merge: 4, keep: 1, silent: 1 },
+    { at: "t8", kind: "tested", agent: "A003", idea: "I00102", pips: 1500.5, win: 56, by: "records room meeting", room: true },
+    { at: "t9", kind: "room_meeting", members: six, ai: true, decision: "merge", merge: 4, keep: 1, strategy: "I00102", pips: 1500.5, win: 56 },
+    { at: "t10", kind: "room_session", members: six, tested: 60, mixes: 0, leader: "A021", made: 3345.68 },
+  ];
+  let ended = false;
+  const seen = [];
+  b.playReplay({ cycle: 3, title: "the Records Room's session 1", start: startOf(f), events }, { speed: 4, onProgress: (i, n, e) => seen.push([e.kind, e.agent || "", six.map((id) => (at(id).atTable && inRoom(at(id)) ? 1 : 0)).join("")]), onEnd: () => (ended = true) });
+  assert.equal(b.banner.text, "Replay of the Records Room's session 1: 15 real events");
+  for (let i = 0; i < 3000 && !ended; i++) b.tick(0.05);
+  assert.ok(ended, "the replay plays to its end");
+  const kinds = seen.map((x) => x[0]);
+  assert.deepEqual(kinds, events.map((e) => e.kind), "every real event is shown, in order");
+  // alone first: while they think and bring their work, nobody is in the room
+  for (const [kind, , seated] of seen.slice(0, kinds.indexOf("room_meeting_start") + 1)) assert.equal(seated, "000000", `nobody is at the table at ${kind}`);
+  // together: the first voice is only heard once all six have come up by lift and sat down
+  assert.equal(seen[kinds.indexOf("room_voice")][2], "111111", "the six had all taken the lift to the top floor and sat at the room's table before anyone spoke");
+  assert.equal(seen[kinds.indexOf("room_decision")][2], "111111");
+  assert.equal(b.mode, "idle");
+  for (const id of six) { const a = at(id), h = b.home(id); assert.equal(a.away, null); assert.ok(Math.abs(a.x - h.x) < 1 && Math.abs(a.y - h.y) < 1, `${id} is back at its own desk`); assert.equal(b.poseOf(a), "sit"); }
+  b.destroy();
+
+  // step by step, for what is shown at each event
+  const c = new Building(canvasStub(1150), { animations: true });
+  c.setData(f, null);
+  const who = (id) => c.agents.get(id);
+  c.apply(events[0], true);
+  assert.deepEqual(six.map((id) => who(id).chip.text), six.map(() => "thinking alone")); assert.ok(six.every((id) => who(id).status === "thinking" && !who(id).away));
+  assert.match(c.banner.text, /each alone at its own desk$/);
+  c.apply(events[5], true); c.apply(events[6], true);
+  assert.equal(who("A003").chip.text, "brings I00101 +812p 51%"); assert.equal(who("A061").chip.text, "brings nothing new");
+  c.apply(events[7], true);
+  assert.ok(six.every((id) => who(id).away.room === c.byId.ROOM && who(id).away.sticky && who(id).status === "in_meeting"), "the meeting sends all six to the room");
+  assert.deepEqual(c.placeOf(events[7]).ids, six); assert.ok(c.placeOf(events[8]).rect.y < c.byId.ROOM.y && c.placeOf(events[11]).rect.w > c.byId.ROOM.w, "the camera frames the room for the meeting");
+  c.apply(events[8], true); c.apply(events[9], true); c.apply(events[10], true);
+  assert.equal(who("A021").chip.text, "Name21: make it one"); assert.equal(who("A003").chip.text, "Name3: keep them apart"); assert.equal(who("A081").chip.text, "did not speak");
+  c.apply(events[11], true);
+  assert.ok(c.texts.some((x) => x.text === "ONE JOINT STRATEGY · 4 to 1" && x.big)); assert.equal(c.banner.text, "The Records Room has voted: 4 of 5 want one joint strategy");
+  const flights = c.flights.length;
+  c.apply(events[12], true);
+  const board = c.roomBoard();
+  assert.ok(c.flights.length > flights && c.flights.slice(flights).every((fl) => Math.abs(fl.x0 - (board.x + board.w / 2)) < 1 || Math.abs(fl.x1 - (board.x + board.w / 2)) < 1), "what the meeting had tested leaves from the room's board and comes back to it");
+  assert.equal(who("A003").status, "in_meeting", "the member it is filed under stays at the table");
+  c.apply(events[13], true);
+  assert.ok(six.every((id) => who(id).away === null && who(id).status === "idle")); assert.ok(c.texts.some((x) => x.text === "joint strategy I00102"));
+  c.apply({ at: "k", kind: "room_decision", members: six, decision: "keep_separate", merge: 2, keep: 4, silent: 0 }, true);
+  assert.ok(c.texts.some((x) => x.text === "KEPT APART · 4 to 2")); assert.equal(c.banner.text, "The Records Room has voted: 4 of 6 want to keep their ideas apart");
+  c.apply({ at: "n", kind: "room_decision", members: six, decision: "no_quorum", merge: 1, keep: 0, silent: 5 }, true);
+  assert.ok(c.texts.some((x) => x.text === "NO DECISION"));
+  c.destroy();
+});
+
+test("while a session of the Records Room runs, the live file puts its six at the room's table for the meeting", () => {
+  const b = new Building(canvasStub(1150), { animations: true });
+  const f = firm(); f.room = { open: true };
+  b.setData(f, null);
+  const six = ["A003", "A021", "A047", "A061", "A066", "A081"], now = new Date().toISOString();
+  const agents = (status, detail) => Object.fromEntries(Object.keys(f.agents).map((id) => [id, six.includes(id) ? { status, detail, floor: f.agents[id].floor } : { status: "idle", detail: "" }]));
+  b.applyLive({ mode: "firm", cycle: 3, stage: "The Records Room: each of the six is thinking on its own", updated_at: now, agents: agents("thinking", ""), events: [], room: { session: 1, phase: "thinking" } });
+  assert.equal(b.mode, "live"); assert.ok(six.every((id) => b.agents.get(id).status === "thinking" && !b.agents.get(id).away), "thinking: each at its own desk");
+  b.applyLive({ mode: "firm", cycle: 3, stage: "The Records Room: the six are at one table", updated_at: now, agents: agents("in_meeting", "the Records Room's meeting"), events: [], room: { session: 1, phase: "meeting" } });
+  assert.ok(six.every((id) => b.agents.get(id).away.room === b.byId.ROOM), "the meeting: in the Records Room, not in a floor's discussion room");
+  run(b, 60);
+  assert.ok(six.every((id) => b.agents.get(id).atTable && b.agents.get(id).at === 6), "they have come up by lift and sat down");
+  b.applyLive({ mode: "firm", cycle: 3, stage: "Cycle finished", updated_at: now, agents: agents("idle", ""), events: [] });
+  assert.equal(b.mode, "idle"); assert.ok(six.every((id) => b.agents.get(id).away === null));
+  b.destroy();
 });
