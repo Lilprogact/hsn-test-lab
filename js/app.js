@@ -11,6 +11,7 @@ import { FirmView } from "./firm.js";
 import { RunsView } from "./runs.js";
 import { SettingsView } from "./settings.js";
 import { SetupView } from "./setup.js";
+import { keepView, KEEP_BLOCKS_RUNS } from "./firmlogic.js";
 
 // GitHub Pages cannot send the header that forbids framing, so the site refuses to run inside another page itself:
 // nothing typed here (the password, the token, the One-time setup boxes) can then sit under someone else's overlay.
@@ -154,6 +155,12 @@ function stopClock() { if (clockTimer) clearInterval(clockTimer); clockTimer = n
  * {phase, live, run, resultReady}. Returns the result.json.
  */
 export async function startRun(mode, settings, onProgress, { prefix = mode } = {}) {
+  // Back to back (15 Nov 2026): while the Records Room runs one session after another, no run of another kind is sent.
+  // HSN Capital's own buttons ask the same question themselves before they come here (firm.js, free()).
+  if (mode !== "ceo") {
+    const [cfg, chain] = await Promise.all(["config.json", "status/room_chain.json"].map((p) => gh.getJson(state.token, state.owner, p).catch(() => null)));
+    if (keepView(null, cfg, chain, null).on) throw new gh.GitHubError(KEEP_BLOCKS_RUNS, 0, "other");
+  }
   const requestId = gh.newRequestId(prefix);
   const runName = `Run ${requestId} (${mode})`;
   await gh.dispatch(state.token, state.owner, gh.RUN_WORKFLOW, { request_id: requestId, mode, settings: JSON.stringify(settings) });

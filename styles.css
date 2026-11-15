@@ -313,6 +313,13 @@ button[disabled] { opacity: .5; cursor: not-allowed; }
 .room-seat.busy { border-color: var(--green2); }
 .room-seat.done { border-color: var(--line2); }
 .room-say { overflow-wrap: anywhere; line-height: 1.45; }
+.room-unseen { margin-top: -4px; font-size: 13.5px; }
+.room-keep { border: 1px dashed var(--line); border-radius: 12px; padding: 8px 12px; margin-top: 10px; }
+.room-keep.on { border: 1px solid var(--green); }
+.room-keep p { margin: 2px 0 8px; }
+.room-sent { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--bg2); }
+.room-sent .stat-like { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin: 6px 0; }
+.room-sent .stat-like b { overflow-wrap: anywhere; }
 .dot-live { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--green); margin-right: 7px; animation: roompulse 1.2s ease-in-out infinite; }
 @keyframes roompulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
 @media (prefers-reduced-motion: reduce) { .dot-live { animation: none; } }

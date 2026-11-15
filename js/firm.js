@@ -5,11 +5,11 @@
 // live status file. Nothing here makes a number up: where the Engine has no result yet, the page says so.
 import { rankingBadge } from "./dataview.js";
 import * as gh from "./github.js";
-import { state, startRun, liveText } from "./app.js";
+import { state, startRun, startSettingsWorkflow, liveText } from "./app.js";
 import { ukDateTime } from "./clock.js";
 import { h, fill, card, stat, table, badge, field, select, input, money, num, pct, signed, openModal, closeModal, mdLite } from "./ui.js";
 import { Building, LEVEL_COLORS, BAR_COLORS, isRunning, coverageWorld } from "./building.js";
-import { from500View, auditWords, roomView, roomEntryView, roomLiveView, roomSessionCost, whyNotFree } from "./firmlogic.js";
+import { from500View, auditWords, roomView, roomEntryView, roomLiveView, roomSessionCost, whyNotFree, keepView } from "./firmlogic.js";
 import { barChart } from "./charts.js";
 import { PACES, nextShift, readiness, scoreboard, eventLine, tokenHelp, shiftPlan, shiftPlanWords, minutesUsedThisMonth, minutesNote } from "./firmlogic.js";
 import { ChallengeReplay } from "./replay.js";
@@ -74,6 +74,8 @@ function story(x, nameOf) {
     case "commendation": return `Commendation: ${x.detail}`;
     case "room_joined": return x.detail ? x.detail.charAt(0).toUpperCase() + x.detail.slice(1) + "." : "Put in the Records Room by the CEO.";
     case "ceo_reward": return x.detail ? x.detail.charAt(0).toUpperCase() + x.detail.slice(1) + "." : "Rewarded by the CEO.";
+    case "room_sent": return x.detail ? x.detail.charAt(0).toUpperCase() + x.detail.slice(1) + "." : "One of its strategies was sent to the whole company by the Records Room.";
+    case "room_carried": return x.detail ? x.detail.charAt(0).toUpperCase() + x.detail.slice(1) + "." : "Took something from a strategy the Records Room sent to the whole company.";
     case "replaced": return x.detail;
     case "discussion": return `Took part in floor ${x.floor}'s discussion.`;
     default: return x.kind;
@@ -101,11 +103,14 @@ export class FirmView {
     if (!this.firm) this.root.replaceChildren(h("p", { class: "muted" }, "Loading HSN Capital…"));
     try {
       const get = (path, ref) => gh.getJson(state.token, state.owner, path, ref);
-      const [firm, board, live, setup, schedule] = await Promise.all([
+      const [firm, board, live, setup, schedule, config, chain] = await Promise.all([
         get("firm/firm.json"), get("firm/leaderboard.json"), get("status/firm_live.json", "live").catch(() => null),
         get("status/setup.json").catch(() => null), get("status/firm_schedule.json").catch(() => null),
+        get("config.json").catch(() => null), get("status/room_chain.json").catch(() => null),
       ]);
-      this.firm = firm; this.board = board; this.live = live; this.setup = setup; this.schedule = schedule;
+      this.firm = firm; this.board = board; this.live = live; this.setup = setup; this.schedule = schedule; this.config = config; this.chain = chain;
+      // the switch as this page set it a moment ago wins over the saved file for the minute or two GitHub takes to save it
+      if (this.keepSet && Date.now() - this.keepSet.at < 3 * 60 * 1000 && !!config?.firm?.room_keep_running !== this.keepSet.on) this.config = this.withKeep(config, this.keepSet.on);
       this.render();
     } catch (e) { this.renderProblem(e); }
   }
@@ -124,10 +129,15 @@ export class FirmView {
       const was = isRunning(this.live);
       this.live = await gh.getJson(state.token, state.owner, "status/firm_live.json", "live");
       const now = isRunning(this.live);
-      if (was && !now) { await this.load(); return; }          // the shift has just finished: read its results
+      if (was && !now) {                                      // the shift (or the room's session) has just finished: read its results
+        await this.load();
+        // back to back: the chain's word on whether another session follows is saved a little after the session itself
+        if (this.config?.firm?.room_keep_running) for (const ms of [45000, 120000]) setTimeout(() => { if (!isRunning(this.live) && !this.busy) this.load(); }, ms);
+        return;
+      }
       if (now && this.building?.mode === "replay") this.building.stopReplay(true);      // a real shift takes over from the replay
       this.building?.applyLive(this.live);
-      this.paintControl(); this.paintTicker(); this.paintRoomLive(); this.syncRoomCamera();
+      this.paintControl(); this.paintTicker(); this.paintRoomLive(); this.paintKeep(); this.syncRoomCamera();
     } catch { /* keep the last state */ }
   }
 
@@ -207,8 +217,9 @@ export class FirmView {
    *  five minutes: three runs queued up on GitHub, and when the second finished, its line was printed over the third
    *  one's "in session" notice, so the page looked dead while the six were thinking. `room`: also refuse while a
    *  session of the Records Room is running that this page did not start (after a reload, or from another device). */
-  free({ room = false } = {}) {
-    const why = whyNotFree(this.busy, room ? roomLiveView(this.live, this.firm) : null);
+  free({ room = false, chainStart = false } = {}) {
+    // `chainStart`: the one press that may be sent while the switch is on: the first session of a run of sessions
+    const why = whyNotFree(this.busy, room ? roomLiveView(this.live, this.firm) : null, !chainStart && keepView(this.firm, this.config, this.chain, null).on);
     if (!why) return true;
     this.say(why, "warnc");
     // said where it cannot be missed: the button that was pressed may be far down the page from the strip at the top
@@ -219,16 +230,17 @@ export class FirmView {
   }
 
   /** One CEO action through the Run workflow, with the strip saying what is happening. Resolves to false when it was
-   *  not started because something else is still running. */
-  async act(label, payload, done) {
-    if (!this.free({ room: payload?.action === "room" || payload?.action === "reward" })) return false;
+   *  not started because something else is still running. `queued` is called once, as soon as GitHub has taken the
+   *  request (the run itself is then waited for as usual); `done` is given the result and the request's own id. */
+  async act(label, payload, done, { chainStart = false, queued = null } = {}) {
+    if (!this.free({ room: payload?.action === "room" || payload?.action === "reward", chainStart })) return false;
     this.busy = label; this.note = ""; this.say(""); this.paintControl();          // the line left by the last thing that finished goes
     try {
-      const { result } = await startRun("ceo", payload, () => {}, { prefix: "ceo" });
+      const { result, requestId } = await startRun("ceo", payload, (p) => { if (p.phase === "queued" && queued) { const q = queued; queued = null; q(p); } }, { prefix: "ceo" });
       this.busy = "";
       if (payload?.action === "room") this.roomReplay = null;        // the room's replay file is its latest session's: fetch it afresh
       await this.load();
-      this.say(done(result), result?.firm_schedule?.ok === false ? "warnc" : "good");
+      this.say(done(result, requestId), result?.firm_schedule?.ok === false ? "warnc" : "good");
       setTimeout(() => this.refreshLive(), 30000);
     } catch (e) { this.busy = ""; this.paintControl(); this.say(e.message, "bad"); }
     return true;
@@ -240,7 +252,7 @@ export class FirmView {
     const f = this.firm;
     this.stopLoop();
     this.building?.destroy(); this.building = null;
-    this.roomReplay = null; this.roomLiveEl = null; this.roomStageSlot = null; this.roomNote = null;
+    this.roomReplay = null; this.roomLiveEl = null; this.roomStageSlot = null; this.roomNote = null; this.keepEl = null; this.thinkBtn = null;
     if (!f) {
       this.root.replaceChildren(card("HSN Capital", h("p", { class: "muted" }, "The firm's files are not in the engine repository yet. They are created by the first shift."),
         h("button", { class: "primary", onclick: () => this.runCycle(true) }, "Run the first shift now")));
@@ -420,9 +432,13 @@ export class FirmView {
       this.act("The Records Room is in session…", { action: "room", do: "think" }, (res) => this.roomThought(res));
       this.paintRoomLive();
     } }, "▶ Run a session: the six think alone, then meet");
+    this.thinkBtn = think;                                            // hidden while the room runs back to back (paintKeep)
     const watch = v.think?.replay ? h("button", { class: "secondary", onclick: () => this.watchRoom() }, `▶ Watch session ${v.think.session} again`) : null;
+    // Back to back (15 Nov 2026: "keep them running"): each session starts the next until the month's AI money is used or Stop is pressed
+    this.keepEl = h("div", { class: "room-keep" });
+    this.paintKeep();
     const atWork = card("The room at work", this.roomStageSlot, this.roomLiveEl,
-      h("div", { class: "row" }, v.open ? think : null, watch), this.roomNote,
+      h("div", { class: "row" }, v.open ? think : null, watch), this.keepEl, this.roomNote,
       h("p", { class: "help" }, "A session has three parts. 1 · Alone: each of the six thinks on its own at its own desk, with the Engine's research tools; none of them sees what another finds. "
         + "2 · Together: they take the lift up to the Records Room, everyone's work goes on one table, and each says in its own words what it would take from the others and whether the room should make ONE joint strategy. "
         + "More for than against and the room writes one down; otherwise the ideas stay apart. 3 · The Engine tests whatever was put forward and judges the growth challenge on the months nobody has seen."),
@@ -439,6 +455,27 @@ export class FirmView {
       x.next ? h("p", { class: "muted small" }, `Will try next: ${x.next}`) : null,
       x.unverified.length ? h("p", { class: "warnc small" }, `Numbers in its words that the Engine could not find in what it was shown: ${x.unverified.join(", ")}`) : null);
     const mtg = v.meeting;
+    // What the room has sent to the whole company: one strategy a session, voted by the six, sent only if it held
+    const sentTile = (x) => h("div", { class: "room-sent" },
+      h("div", { class: "row between" }, h("b", {}, x.title), h("span", { class: "muted small" }, `${ukDateTime(x.at)} UK`)),
+      h("p", { class: "small" }, x.votesLine, x.voters.length ? ` Named by ${x.voters.join(", ")}.` : ""),
+      x.words.length ? h("ul", { class: "rules" }, ...x.words.map((w) => h("li", {}, w))) : null,
+      ...x.why.slice(0, 3).map((w) => h("p", { class: "room-say" }, `${w.who}: “${w.words}”`)),
+      h("div", { class: "grid two" },
+        h("div", { class: "stat-like" }, h("span", { class: "muted small" }, "On the months the agents practised on"), h("b", {}, x.practice)),
+        h("div", { class: "stat-like" }, h("span", { class: "muted small" }, "On the months nobody had seen (why it was allowed to go)"), h("b", {}, x.unseen))),
+      x.passedOver.length ? h("p", { class: "muted small" }, `Also named, and why it did not go: ${x.passedOver.join("; ")}.`) : null,
+      x.carried ? h("div", {}, h("p", { class: "small" }, x.carried.line),
+        x.carried.kept.length ? h("details", {}, h("summary", {}, `The ${x.carried.kept.length} agent${x.carried.kept.length === 1 ? "" : "s"} whose best is better for it`),
+          h("ul", { class: "rules" }, ...x.carried.kept.map((k) => h("li", {}, h("button", { class: "link", type: "button", onclick: () => this.openAgent(k.id) }, k.name), k.line.slice(k.name.length))))) : null)
+        : h("p", { class: "muted small" }, "The Engine has not tried it on the other agents' best ideas yet: it does that at the end of the next session, or with “Run the room's Engine work now” below (no AI)."),
+      h("div", { class: "row" }, h("button", { class: "secondary small", onclick: () => this.openIdea({ id: x.idea, agent: x.byName, hypothesis: x.hypothesis, rules: x.rules, summary: x.card }) }, `Open ${x.idea}`), h("button", { class: "link", type: "button", onclick: () => this.openAgent(x.by) }, x.byName)));
+    const sentCard = card("Sent to the whole company",
+      h("p", { class: "help" }, "After every session each of the six names ONE strategy on the table that should go to every agent in the firm, to learn from and build on. The Engine counts the votes. "
+        + "It sends the most named one only if it also made money on the months nobody has seen (most of the firm's records did not), and equal votes are settled by the money made there. "
+        + "Then, with no AI, the Engine tries the sent strategy's parts on every other agent's own best idea and keeps what improves it and holds as well. When the firm works again, every agent finds the strategy in front of it and thinks about it too."),
+      v.sent.length ? h("div", { class: "stack" }, ...v.sent.slice(0, 8).map(sentTile)) : h("p", { class: "muted" }, "Nothing has been sent yet. It starts with the next session."),
+      v.notSent ? h("p", { class: "warnc small" }, `${v.notSent.session != null ? `Session ${v.notSent.session}` : "The last meeting"}: nothing was sent. ${v.notSent.note}`) : null);
     const lastMeeting = mtg ? card(`The room's last meeting: ${mtg.session ? `session ${mtg.session}` : `shift ${mtg.cycle}`} (${ukDateTime(mtg.at)} UK)`,
       v.think && v.think.session === mtg.session ? h("p", { class: "muted small" }, v.think.line) : null,
       h("p", { class: "help" }, "Each tile is one member: what it brought from thinking alone, and what it said at the table. The words are its own answer, given before it could hear the others. Every number in them is checked against what the Engine showed it, and one the Engine never showed is flagged. That check cannot tell when a real number is set beside the wrong idea, so where the Engine has put something right, its correction is under the lessons further down."),
@@ -458,7 +495,10 @@ export class FirmView {
     const tile = (m) => h("div", { class: `room-member ${m.improved ? "up" : ""}` },
       h("div", { class: "row between" }, h("button", { class: "link room-name", type: "button", onclick: () => this.openAgent(m.id) }, m.name), h("span", { class: "muted small" }, m.where)),
       h("p", { class: "room-record" }, "Pinned record ", h("b", {}, m.recordIdea), ": ", m.record),
+      // the same record on the months nobody has seen, as the Engine found it (shown to the CEO, never to an agent)
+      m.recordUnseen ? h("p", { class: `room-unseen ${m.recordUnseen.held ? "good" : m.recordUnseen.unknown ? "muted" : "warnc"}` }, m.recordUnseen.line) : null,
       h("p", { class: m.improved ? "good" : "muted" }, m.improved ? "▲ " : "", m.progress), m.firstBy ? h("p", { class: "muted small" }, m.firstBy) : null,
+      m.bestUnseen ? h("p", { class: `room-unseen small ${m.bestUnseen.held ? "good" : m.bestUnseen.unknown ? "muted" : "warnc"}` }, m.bestUnseen.line) : null,
       h("details", {}, h("summary", {}, `What made the record (${m.tried} of its strategies count so far)`), h("ul", { class: "rules" }, ...m.words.map(li))));
     const sides = h("div", { class: "grid two" }, ...v.sides.map((sd) => h("div", { class: "stack room-side" }, h("h3", {}, sd.title), h("p", { class: "help" }, sd.job),
       ...(sd.members.length ? sd.members.map(tile) : [h("p", { class: "muted" }, "Nobody yet.")]))));
@@ -478,7 +518,7 @@ export class FirmView {
     const work = h("button", { class: "secondary runs", onclick: () => this.act("The Records Room's Engine session is running… (about ten minutes)", { action: "room", do: "work" }, (res) => this.roomSaid(res, "The room's Engine session is done.")) }, "Run the room's Engine work now");
     const close = h("button", { class: "secondary runs", onclick: () => { if (!this.free({ room: true })) return; if (confirm("Close the Records Room? Its six carry on with their ordinary work. Everything the room did stays on record, and you can open it again.")) this.act("Closing the room…", { action: "room", do: "close" }, () => "The Records Room is closed."); } }, "Close the room");
     const last = v.last ? `Its last Engine session (${ukDateTime(v.last.at)} UK) tested ${num(v.last.tested, 0)} new strategies, found ${num(v.last.found_in_library, 0)} more already in the library and made ${num(v.last.mixes, 0)} mixes.` : "It has not had an Engine session yet.";
-    return h("div", { class: "stack" }, atWork, lastMeeting,
+    return h("div", { class: "stack" }, atWork, sentCard, lastMeeting,
       card(h("span", {}, v.name, " ", v.open ? badge("open", "good") : badge("closed", "warn"), " ", badge(`${v.thinks} session${v.thinks === 1 ? "" : "s"} of thinking and meeting`), " ", badge(`${v.sessions} Engine session${v.sessions === 1 ? "" : "s"}`)),
         h("p", {}, v.intro), h("p", { class: "muted small" }, `Opened in shift ${v.openedCycle}${v.openedAt ? ` (${ukDateTime(v.openedAt)} UK)` : ""}. ${last}`), sides),
       card("Big pips and a high win rate: where the room stands", table(v.frontierColumns, v.frontier), h("p", { class: "help" }, v.frontierHelp)),
@@ -507,6 +547,67 @@ export class FirmView {
     const r = res?.result || {};
     if (!r.ok) return r.error || res?.errors?.[0]?.message || "It could not be done; see the run on GitHub.";
     return r.leader ? `${ok} ${r.leader.name} leads the growth challenge.` : `${ok} ${r.leader_note || ""}`;
+  }
+
+  /** The back-to-back strip on the room's page: whether the room is running one session after another, what the month's
+   *  AI money still pays for, and the one button that fits (Keep running, or Stop). Painted again as the live file moves. */
+  paintKeep() {
+    const el = this.keepEl, f = this.firm;
+    if (!el || !f?.room) return;
+    const kv = keepView(f, this.config, this.chain, roomLiveView(this.live, f), this.busy);
+    const price = roomSessionCost(f, minutesUsedThisMonth(state.minutes));
+    const go = h("button", { class: "primary runs", disabled: kv.canStart && price.ok ? null : true, title: kv.startWhy || "", onclick: () => this.keepRoomRunning(kv) }, "⏩ Keep the room running, back to back");
+    const stop = h("button", { class: "danger", onclick: () => this.stopRoomRunning() }, "■ Stop after this session");
+    if (this.thinkBtn) this.thinkBtn.hidden = kv.on;                  // back to back: the single-session button gives way to Stop
+    el.className = `room-keep ${kv.on ? "on" : ""}`;
+    el.replaceChildren(h("p", { class: kv.on ? "good" : "muted small" }, kv.on ? badge("BACK TO BACK", "good") : null, kv.on ? " " : "", kv.line),
+      h("div", { class: "row" }, kv.on ? stop : (f.room.open ? go : null)));
+  }
+
+  /** The settings with the room's "keep running" switch as this page has just set it (the saved file follows within a
+   *  minute; its time of saving is what tells a fresh run of sessions from the last word of the one before it). */
+  withKeep(config, on) {
+    const at = new Date(Math.max(Date.now(), (Date.parse(this.chain?.at) || 0) + 1000)).toISOString();
+    return { ...(config || {}), updated_at: at, firm: { ...(config?.firm || {}), room_keep_running: on } };
+  }
+
+  setKeep(on) {
+    this.keepSet = { on, at: Date.now() };
+    this.config = this.withKeep(this.config, on);
+    this.paintKeep(); this.paintControl();
+  }
+
+  /** Back to back (Hassan, 15 Nov 2026): start the first session of a run of sessions and switch the room's "keep
+   *  running" switch on. Every session then starts the next by itself (the engine's scripts/room_chain.py) until the
+   *  month's AI money is used or Stop is pressed. The session is asked for FIRST and the switch second: if the session
+   *  cannot be started, nothing is left switched on; if the switch cannot be saved, it is one ordinary session. The
+   *  switch is saved through Save settings, which does not wait behind a running session. */
+  keepRoomRunning(kv) {
+    if (!this.free({ room: true })) return;
+    if (!confirm(kv.confirm)) return;
+    this.act("The Records Room is in session… (the first of a run of sessions, back to back)", { action: "room", do: "think", chain: 1 },
+      (res, rid) => `${this.roomThought(res)}${this.chain?.after_request === rid && this.chain.why ? ` ${this.chain.why}` : ""}`,
+      { chainStart: true, queued: async () => {
+        try {
+          await startSettingsWorkflow({ firm: { room_keep_running: true } });
+          this.setKeep(true);
+        } catch (e) {
+          this.say(`The session has started, but “keep running” could not be switched on (${e.message}). It is a single session: press the button again when it has finished.`, "warnc");
+        }
+      } });
+    this.paintRoomLive(); this.paintKeep();
+  }
+
+  /** Stop: the session in progress finishes, and no further one starts. Nothing is cut off and nothing is lost. */
+  async stopRoomRunning() {
+    if (!confirm("Stop the room after the session it is in?\n\nThat session finishes and is saved as usual, and no further session starts. If the next session has only just been started, "
+      + "it is not run (and costs nothing) as long as the Stop reaches GitHub before it begins, which takes about half a minute.\n\nYou can start again whenever you like.")) return;
+    try {
+      await startSettingsWorkflow({ firm: { room_keep_running: false } });
+      const running = !!roomLiveView(this.live, this.firm)?.running || /Records Room is in session/.test(this.busy || "");
+      this.setKeep(false);
+      this.say(running ? "Stopped. The session in progress will finish and be saved; no further one will start." : "Stopped. No further session will start by itself.", "good");
+    } catch (e) { this.say(`The Stop could not be sent: ${e.message}. Press it again.`, "bad"); }
   }
 
   /** What a whole session of the room came to, in one line (from the engine's own result). */

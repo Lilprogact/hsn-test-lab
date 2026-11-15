@@ -200,6 +200,9 @@ export function eventLine(e, nameOf = (id) => id) {
     case "room_meeting_start": return out("The Records Room meets: the six sit at one table and everyone's work goes on it", "");
     case "room_voice": return out(`${who} at the table (${e.vote === "merge" ? "wants one joint strategy" : "wants the ideas kept apart"}): "${String(e.say || "").trim()}"`, e.vote === "merge" ? "up" : "");
     case "room_voice_missed": return out(`${who} did not speak at the table (the call did not come back)`, "dim");
+    case "room_sent": return out(`The Records Room sends ${e.idea} to the whole company: ${e.votes ?? "?"} of the ${e.of ?? "?"} who spoke named it, and it made money on the months nobody has seen too (${who}'s strategy)`, "big");
+    case "room_not_sent": return out(`The Records Room sends nothing to the company this time: ${String(e.note || "nothing they named held on the months nobody has seen").replace(/\.$/, "")}`, "dim");
+    case "room_carried": return out(`The Engine tried ${e.idea} on ${n0(e.agents ?? 0)} agents' own best ideas: ${n0(e.kept ?? 0)} of them are better for it and held too${e.done ? "" : " (it carries on with the rest next time)"}`, (e.kept ?? 0) > 0 ? "up" : "");
     case "room_decision": return e.decision === "no_quorum" ? out("The Records Room could not decide: too few of its six spoke", "dim")
       : e.decision === "merge" ? out(`The Records Room votes ${e.merge} to ${e.keep} to make ONE joint strategy`, "big")
         : out(`The Records Room votes ${e.keep} to ${e.merge} to keep its ideas apart`, "big");
@@ -335,6 +338,16 @@ export function roomEntryView(entry) {
   };
 }
 
+/** A record on the months nobody has seen, beside its practice result (the CEO's page only; no agent is shown the
+ *  figures). Null until the Engine has looked at it, which it does at every session of the room. */
+function unseenLine(u, idea = "") {
+  if (!u) return null;
+  const what = idea ? `${idea} on the months nobody has seen` : "On the months nobody has seen";
+  if (u.sets === null || u.sets === undefined) return { held: false, unknown: true, line: `${what}: not checked (its price data is not loaded).` };
+  const verdict = u.held ? "It HELD." : /too few/.test(u.words || "") ? "Too few trades there to say." : "It did NOT hold.";
+  return { held: !!u.held, unknown: !u.held && /too few/.test(u.words || ""), line: `${what}: ${recordLine(u)} · ${madeWords(u.pnl_gbp)}. ${verdict}` };
+}
+
 /** The Records Room as the page shows it, or null when the engine has published no room. */
 export function roomView(firm) {
   const r = firm?.room;
@@ -349,7 +362,8 @@ export function roomView(firm) {
     else progress = best ? `Pips ${n0(rec.pips)} → ${n0(best.pips)} at ${one(best.win_rate_pct)}% wins (${best.idea}, ${n0(best.sets)} trades)` : `Nothing yet beats its record's pips while winning ${high}% or more.`;
     const by = best && best.by && best.by !== id ? `First tested by ${best.by_name || nameOf(best.by)}; it counts here because it is one change away from this record.` : "";
     return { id, name: m.name || id, side: m.side, where: [m.level, m.floor ? `floor ${m.floor}` : "", m.group ? `group ${m.group}` : ""].filter(Boolean).join(", "),
-      recordIdea: rec.idea, record: recordLine(rec), words: rec.in_words || [], progress, firstBy: by, improved, tried: mi.tried ?? 0 };
+      recordIdea: rec.idea, record: recordLine(rec), words: rec.in_words || [], progress, firstBy: by, improved, tried: mi.tried ?? 0,
+      recordUnseen: unseenLine(m.record_unseen), bestUnseen: best ? unseenLine(m.best_unseen, best.idea) : null };
   };
   // the room's last meeting, and what each member brought to it and said there (its own words, as recorded)
   const mt = (r.meetings || []).filter((x) => x && x.voices).slice(-1)[0] || null;
@@ -436,13 +450,88 @@ export function roomView(firm) {
     learnedCorrections: held ? (held.corrections || []).filter((x) => String(x || "").trim()) : [],
     meetings: (r.meetings || []).slice().reverse(), rewards,
     thinks: r.thinks || 0, think, meeting, seats: meeting ? meeting.seats : ids.map(seat),
+    sent: (r.sent || []).filter((x) => x && x.idea).slice().reverse().map((x) => sentView(x, nameOf)),
+    notSent: r.last_send && !r.last_send.idea ? { session: r.last_send.session ?? null, note: r.last_send.note || "" } : null,
+    keep: r.keep || null,
   };
 }
+
+/** One sending of the room to the whole company, for the CEO's page: the strategy, who named it and why, what it made
+ *  on the practice months AND on the months nobody has seen (the CEO sees both; no agent is shown the second), what
+ *  else was named and why it did not go, and what the Engine made of it for everyone else's best idea. */
+export function sentView(x, nameOf = (id) => id) {
+  const u = x.unseen || {}, c = x.carried || null;
+  const kept = (c?.kept || []).map((k) => ({ id: k.agent, name: k.name || nameOf(k.agent), idea: k.idea, own: !!k.own,
+    line: `${k.name || nameOf(k.agent)}: its best ${k.base} with ${k.what} is ${k.idea}: ${n0(k.before?.pips)} → ${n0(k.after?.pips)} pips, ${one(k.before?.win_rate_pct)}% → ${one(k.after?.win_rate_pct)}% wins on the practice months`
+      + (k.own ? "" : " (already in the library)") }));
+  return { session: x.session ?? null, cycle: x.cycle ?? null, at: x.at, idea: x.idea, by: x.by, byName: x.by_name || nameOf(x.by), votes: x.votes ?? 0, of: x.of ?? 0,
+    title: `${x.session != null ? `Session ${x.session}` : `Shift ${x.cycle}`}: ${x.idea} by ${x.by_name || nameOf(x.by)}`,
+    votesLine: `${x.votes ?? 0} of the ${x.of ?? 0} who spoke named it.${x.tie ? " Another had as many votes: this one made more money on the months nobody has seen." : ""}`,
+    voters: (x.voters || []).map(nameOf), why: (x.why || []).map((w) => ({ who: nameOf(w.agent), words: w.why })), words: x.in_words || [], hypothesis: x.hypothesis || "",
+    rules: x.rules || null, card: x.card || null,
+    practice: `${recordLine(x.card)} · ${madeWords(x.card?.pnl_gbp)}`, unseen: `${recordLine(u)} · ${madeWords(u.pnl_gbp)}`,
+    passedOver: (x.tally || []).filter((t) => t.idea !== x.idea).map((t) => `${t.idea}: ${t.votes} vote${t.votes === 1 ? "" : "s"}, ${t.note}`),
+    carried: !c ? null : { done: !!c.done, agents: c.agents ?? 0, tried: c.tried ?? 0, of: c.of ?? null, at: c.at ?? 0, kept,
+      line: `The Engine tried its parts (its filters, its exit, its trade limits, its charts) on ${n0(c.agents ?? 0)} agents' own best ideas: ${n0(kept.length)} of them are better for it and held too`
+        + `; ${n0(c.did_not_hold ?? 0)} improved on the practice months but did not hold, so nothing was kept; ${n0(c.no_gain ?? 0)} were not improved; ${n0(c.not_comparable ?? 0)} could not be compared `
+        + `(another instrument, their own strategy code, or no idea of their own yet).` + (c.done ? "" : ` It has reached ${n0(c.at ?? 0)} of ${n0(c.of ?? 0)} agents and carries on in the next session.`) } };
+}
+
+/** Back to back: how many sessions the month's AI money still pays for, as the engine counts it (cycle.py: a session
+ *  starts with $1.00 or more left, and a NEXT one is started only with $2.00 or more left). */
+export function sessionsLeft(leftUsd, costUsd) {
+  const cost = +costUsd > 0.2 ? +costUsd : ROOM_SESSION.typicalUsd;
+  let left = +leftUsd || 0, n = 0;
+  while (n < 50 && left >= (n === 0 ? ROOM_SESSION.minUsd : ROOM_SESSION.keepMinUsd)) { n += 1; left -= cost; }
+  return n;
+}
+
+/**
+ * The "keep the room running" switch as the page shows it. `config` is the engine's config.json (the switch is
+ * firm.room_keep_running, written only by Save settings), `chain` the chain's last word (status/room_chain.json),
+ * `roomLive` the room's live view, `busy` what this page has in flight.
+ */
+export function keepView(firm, config, chain, roomLive, busy = "", now = Date.now()) {
+  const r = firm?.room, b = firm?.budget || {};
+  const t = (x) => (x ? Date.parse(x) || 0 : 0);
+  const saidAt = t(chain?.at), savedAt = t(config?.updated_at), thoughtAt = t(r?.last_think?.at);
+  // The chain's own last word wins over a switch that has not been switched off yet: when the room cannot go on, the
+  // chain says so the moment the session has saved, and switches the switch off a little later (through Save settings).
+  // It is the last word only if it was said AFTER the settings were last saved: the "no more" of an earlier run of
+  // sessions is old news once the switch has been switched on again (the settings carry the time of their last save).
+  const ended = !!(chain && chain.next === false && saidAt && saidAt >= (savedAt || thoughtAt));
+  const on = !!config?.firm?.room_keep_running && !ended;
+  // the last sign of life of a run of sessions: a session finishing, the chain starting the next, or the switch being saved
+  const lastSign = Math.max(thoughtAt, chain?.next ? saidAt : 0, savedAt);
+  const left = Math.max(0, (+b.firm_budget_usd || 0) - (+b.firm_spent_usd || 0)), cost = +r?.last_think?.cost_usd || 0;
+  const n = sessionsLeft(left, cost), running = !!roomLive?.running || /Records Room is in session/.test(busy || "");
+  const each = cost > 0.2 ? `the last one cost $${cost.toFixed(2)}` : `about $${ROOM_SESSION.typicalUsd.toFixed(2)} each`;
+  const money = `$${left.toFixed(2)} of this month's AI money is left: enough for about ${n} session${n === 1 ? "" : "s"} (${each}).`;
+  const last = chain && chain.why ? `${chain.why}` : "";
+  let line;
+  if (on && running) line = `Running back to back. Session ${roomLive?.session ?? (r?.thinks || 0) + 1} is in progress; when it has saved, the next one starts by itself. ${money}`;
+  else if (on && lastSign && now - lastSign > 12 * 60 * 1000)
+    line = `It is switched on, but no session has started since ${Math.round((now - lastSign) / 60000)} minutes ago, so something stopped it. Press Stop, then start it again. ${money}`;
+  else if (on) line = `Switched on. The next session starts by itself within a minute or two of the last one saving. ${money}`;
+  else if (running) line = "Not running back to back: the session in progress is the last one. Nothing more starts by itself.";
+  else line = (last ? `${last} ` : "") + money;
+  return { on, running, sessions: n, left, line, last, canStart: !!r?.open && !on && !running && n >= 1,
+    startWhy: !r?.open ? "The room is closed." : n < 1 ? `$${left.toFixed(2)} is left of this month's AI money, and a session needs at least $${ROOM_SESSION.minUsd.toFixed(2)}.` : "",
+    confirm: `Keep the Records Room running, back to back?\n\nA session starts now. When it has saved, the next one starts by itself, and so on, until this month's AI money is used `
+      + `or you press Stop. ${money}\n\nAfter every session the six vote ONE strategy to the whole company. The Engine sends it only if it also made money on the months nobody has seen, `
+      + `then tries its parts on every other agent's own best idea and keeps what improves and holds.\n\nEach session takes up to about ${ROOM_SESSION.keepMinutes} GitHub minutes. `
+      + `The firm itself stays ${firm?.paused ? "paused" : "as it is"}. Stop finishes the session in progress and starts no more.` };
+}
+
+/** Said when a run of another kind (a backtest, the Million Challenge, new strategy code) is asked for while the room
+ *  runs back to back. GitHub keeps ONE waiting run: the room's next session would push this one out, or be pushed out. */
+export const KEEP_BLOCKS_RUNS = "The Records Room is running back to back, so this was not started: a run sent now would be pushed out of GitHub's queue by the room's next session, "
+  + "or push that session out. On HSN Capital, open the Records Room page and press “Stop after this session”, wait for that session to finish, then start this again.";
 
 // What a session of the room costs, as the engine sets it (hsnlab/firm/cycle.py: ROOM_TURN, ROOM_VOICE_USD, ROOM_JOINT_USD):
 // every call has a ceiling, so a whole session can never cost more than `maxUsd`; `typicalUsd` is said only until a
 // real session has been run, after which the page quotes what the last one really cost.
-export const ROOM_SESSION = { typicalUsd: 2.5, maxUsd: 6.1, minUsd: 1.0, githubMinutes: 8 };
+export const ROOM_SESSION = { typicalUsd: 2.5, maxUsd: 6.1, minUsd: 1.0, githubMinutes: 8, keepMinUsd: 2.0, keepMinutes: 12 };
 
 /** Before a session of the room is started: what it will cost, in the firm's own figures. `ok` is false when the
  *  month's AI money left is less than the engine needs to start one (it would refuse). */
@@ -457,7 +546,7 @@ export function roomSessionCost(firm, minutesUsed = null) {
 }
 
 const PHASES = { opening: "Opening the books: loading the price history", thinking: "Alone: each of the six is thinking on its own", meeting: "Together: the six are at one table",
-  engine: "The Engine is testing and judging the growth challenge", done: "Finished" };
+  engine: "The Engine is testing and judging the growth challenge", company: "The Engine is trying what the room sent on every agent's own best idea", done: "Finished" };
 
 /** What a room member is doing right now, in plain words, from the live status file's own label for it. */
 function doingWords(m) {
@@ -484,12 +573,15 @@ function doingWords(m) {
 /** Why a button that starts a run on GitHub may not be pressed now ("" when it may). One thing at a time: a second run
  *  only queues behind the first on GitHub, costs minutes and, for a session of the room, real money. `busy` is what this
  *  page has in flight; `roomLive` is the room's live view (a session somebody started, here or elsewhere). */
-export function whyNotFree(busy, roomLive) {
+export function whyNotFree(busy, roomLive, keepOn = false) {
   if (busy) {
     const what = String(busy).replace(/…/g, "").replace(/\s*\(.*\)\s*$/, "").trim();
     return `One thing at a time. The last thing you pressed is still running on GitHub: ${what}. Wait for it to finish, then press again.`;
   }
   if (roomLive?.running) return `A session of the Records Room is running now (session ${roomLive.session}: ${roomLive.phaseWords}). Wait for it to finish, then press again. You can watch it on the Records Room page.`;
+  // back to back: between two sessions nothing is running for a minute or two, but the next one is already on its way;
+  // anything else sent to GitHub now would push it out of the queue (GitHub keeps one waiting run) or be pushed out by it
+  if (keepOn) return "One thing at a time. The Records Room is running back to back: when one session has saved, the next starts by itself. Press “Stop after this session” on the Records Room page, wait for that session to finish, then press again.";
   return "";
 }
 
@@ -499,11 +591,12 @@ export function roomLiveView(live, firm, now = Date.now()) {
   const ids = r.order?.length ? r.order : Object.keys(r.members || {});
   const fresh = now - Date.parse(live.updated_at) < 6 * 60 * 1000;
   const running = !!(live.mode === "firm" && live.stage && live.stage !== "Cycle finished" && fresh);
-  const order = ["thinking", "meeting", "engine"], at = lr.phase === "done" ? 3 : lr.phase === "opening" ? -1 : order.indexOf(lr.phase);
+  const order = ["thinking", "meeting", "engine", "company"], at = lr.phase === "done" ? 4 : lr.phase === "opening" ? -1 : order.indexOf(lr.phase);
   const votes = lr.votes || null;
   return { running, session: lr.session, phase: lr.phase, phaseWords: PHASES[lr.phase] || String(lr.phase || ""), stage: live.stage || "", percent: live.percent ?? 0,
     minutes: Math.round((live.elapsed_s || 0) / 60), updatedAt: live.updated_at,
-    steps: [["thinking", "1 · Alone", "each thinks on its own"], ["meeting", "2 · Together", "they meet and see each other's work"], ["engine", "3 · The Engine", "tests and judges"]]
+    steps: [["thinking", "1 · Alone", "each thinks on its own"], ["meeting", "2 · Together", "they meet, and name one strategy for the whole company"], ["engine", "3 · The Engine", "tests and judges"],
+      ["company", "4 · The company", "the Engine tries what was sent on everyone's best"]]
       .map(([key, label, words], i) => ({ key, label, words, state: i < at ? "done" : i === at ? "now" : "todo" })),
     members: ids.map((id) => { const m = lr.members?.[id] || {}, v = lr.voices?.[id] || null; return { id, name: r.members[id]?.name || firm?.agents?.[id]?.name || id, side: r.members[id]?.side,
       state: m.state || "waiting", busy: ["thinking", "researching", "testing"].includes(m.state), done: ["brought", "nothing_new", "failed"].includes(m.state), doing: doingWords(m),

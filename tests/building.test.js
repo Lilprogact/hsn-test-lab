@@ -486,14 +486,16 @@ test("a session of the Records Room: its six think alone at their desks, meet at
     { at: "t6", kind: "room_voice", agent: "A003", vote: "keep_separate", say: "They do not fit.", take_from: [] },
     { at: "t6", kind: "room_voice_missed", agent: "A081", error: "timed out" },
     { at: "t7", kind: "room_decision", members: six, decision: "merge", merge: 4, keep: 1, silent: 1 },
+    { at: "t7", kind: "room_sent", members: six, agent: "A021", idea: "I00007", votes: 3, of: 5, pips: 9000, win: 45 },
     { at: "t8", kind: "tested", agent: "A003", idea: "I00102", pips: 1500.5, win: 56, by: "records room meeting", room: true },
     { at: "t9", kind: "room_meeting", members: six, ai: true, decision: "merge", merge: 4, keep: 1, strategy: "I00102", pips: 1500.5, win: 56 },
     { at: "t10", kind: "room_session", members: six, tested: 60, mixes: 0, leader: "A021", made: 3345.68 },
+    { at: "t11", kind: "room_carried", idea: "I00007", agent: "A021", agents: 61, kept: 2, new: 2, done: true, members: ["A010", "A050"] },
   ];
   let ended = false;
   const seen = [];
   b.playReplay({ cycle: 3, title: "the Records Room's session 1", start: startOf(f), events }, { speed: 4, onProgress: (i, n, e) => seen.push([e.kind, e.agent || "", six.map((id) => (at(id).atTable && inRoom(at(id)) ? 1 : 0)).join("")]), onEnd: () => (ended = true) });
-  assert.equal(b.banner.text, "Replay of the Records Room's session 1: 15 real events");
+  assert.equal(b.banner.text, "Replay of the Records Room's session 1: 17 real events");
   for (let i = 0; i < 3000 && !ended; i++) b.tick(0.05);
   assert.ok(ended, "the replay plays to its end");
   const kinds = seen.map((x) => x[0]);
@@ -523,17 +525,29 @@ test("a session of the Records Room: its six think alone at their desks, meet at
   assert.equal(who("A021").chip.text, "Name21: make it one"); assert.equal(who("A003").chip.text, "Name3: keep them apart"); assert.equal(who("A081").chip.text, "did not speak");
   c.apply(events[11], true);
   assert.ok(c.texts.some((x) => x.text === "ONE JOINT STRATEGY · 4 to 1" && x.big)); assert.equal(c.banner.text, "The Records Room has voted: 4 of 5 want one joint strategy");
-  const flights = c.flights.length;
+  // one strategy goes to the whole company: it is said at the room, and a sheet flies from the room to the desks
+  const before = c.flights.length;
   c.apply(events[12], true);
+  assert.ok(c.texts.some((x) => x.text === "TO THE WHOLE COMPANY · I00007" && x.big)); assert.equal(who("A021").chip.text, "its strategy goes to everyone");
+  assert.equal(c.banner.text, "The Records Room sends I00007 to the whole company: 3 of 5 named it, and it held on the months nobody has seen");
+  assert.ok(c.flights.length >= before + 40, "sheets leave the room for the desks all over the building"); assert.ok(c.placeOf(events[12]).rect.w > c.byId.ROOM.w, "the camera is on the room");
+  c.flights = [];
+  const flights = c.flights.length;
+  c.apply(events[13], true);
   const board = c.roomBoard();
   assert.ok(c.flights.length > flights && c.flights.slice(flights).every((fl) => Math.abs(fl.x0 - (board.x + board.w / 2)) < 1 || Math.abs(fl.x1 - (board.x + board.w / 2)) < 1), "what the meeting had tested leaves from the room's board and comes back to it");
   assert.equal(who("A003").status, "in_meeting", "the member it is filed under stays at the table");
-  c.apply(events[13], true);
+  c.apply(events[14], true);
   assert.ok(six.every((id) => who(id).away === null && who(id).status === "idle")); assert.ok(c.texts.some((x) => x.text === "joint strategy I00102"));
   c.apply({ at: "k", kind: "room_decision", members: six, decision: "keep_separate", merge: 2, keep: 4, silent: 0 }, true);
   assert.ok(c.texts.some((x) => x.text === "KEPT APART · 4 to 2")); assert.equal(c.banner.text, "The Records Room has voted: 4 of 6 want to keep their ideas apart");
   c.apply({ at: "n", kind: "room_decision", members: six, decision: "no_quorum", merge: 1, keep: 0, silent: 5 }, true);
   assert.ok(c.texts.some((x) => x.text === "NO DECISION"));
+  c.apply(events[16], true);
+  assert.equal(who("A010").chip.text, "its best is better for it"); assert.equal(who("A050").chip.text, "its best is better for it");
+  assert.equal(c.banner.text, "The Engine tried I00007 on 61 agents' own best ideas: 2 are better for it and held too");
+  c.apply({ at: "x", kind: "room_not_sent", members: six, note: "None of the six named a strategy to send." }, true);
+  assert.match(c.banner.text, /^The Records Room sends nothing to the company this time/);
   c.destroy();
 });
 

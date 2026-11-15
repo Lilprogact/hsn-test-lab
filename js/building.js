@@ -34,13 +34,14 @@ const STEP = { tested: 0.14, thinking: 0.1, looked: 0.3, coded: 0.3, meeting_sta
   audit_failed: 0.9, audit_recheck: 1.2, battle: 0.9, level_up: 3.4, swapped_down: 3.0, transfer: 1.6, rotation: 0.6, solo_passed_no_seat: 0.6, data_update: 0.3, turn_failed: 0.1,
   meeting_failed: 0.3, transfer_declined: 0.2, retest_failed: 0.4,
   room_opened: 2.4, room_session: 0.8, room_entry: 0.5, room_put_forward: 0.3, room_leader: 1.6, room_meeting_start: 1.4, room_meeting: 1.6, ceo_reward: 2.6,
-  room_thinking: 1.6, room_brought: 0.9, room_voice: 4.2, room_voice_missed: 0.8, room_decision: 3.6 };
+  room_thinking: 1.6, room_brought: 0.9, room_voice: 4.2, room_voice_missed: 0.8, room_decision: 3.6, room_sent: 3.4, room_not_sent: 1.2, room_carried: 2.2 };
 // the camera: how much an event matters (a bigger number takes the picture from a smaller one) and how long it is shown (real seconds)
 const SHOT = { tested: [1, 2.4], thinking: [1, 2.2], looked: [1, 2.6], coded: [3, 3.2], meeting_start: [3, 4.2], meeting: [2, 2.6], challenge_start: [4, 4], challenge_failed: [4, 3.2],
   audit_start: [4, 3.6], audit_failed: [4, 3.2], audit_recheck: [4, 3.6], level_up: [5, 8], swapped_down: [4, 6], battle: [4, 3.2], transfer: [3, 5], rotation: [2, 3], solo_passed_no_seat: [3, 3.2],
   data_update: [3, 3.2], retest_failed: [3, 3],
   room_opened: [5, 6], room_session: [2, 3], room_entry: [2, 2.8], room_put_forward: [1, 2.4], room_leader: [4, 4.5], room_meeting_start: [4, 5], room_meeting: [4, 4], ceo_reward: [5, 7],
-  room_thinking: [3, 3.6], room_brought: [2, 3], room_voice: [4, 4.6], room_voice_missed: [2, 2], room_decision: [5, 6] };
+  room_thinking: [3, 3.6], room_brought: [2, 3], room_voice: [4, 4.6], room_voice_missed: [2, 2], room_decision: [5, 6], room_sent: [5, 6.5], room_not_sent: [3, 3.4],
+  room_carried: [3, 4.5] };
 const MAX_FLIGHTS = 70;
 
 const first = (name) => String(name || "").split(" ")[0];
@@ -447,6 +448,20 @@ export class Building {
         if (animate && e.strategy && this.byId.ROOM) this.word(`joint strategy ${e.strategy}`, this.byId.ROOM, GOOD);
         break;
       case "ceo_reward": { const a = A(e.agent); if (a) { a.mood = "proud"; chip(e.agent, "★ rewarded by the CEO", AMBER, 6); } if (animate) this.say(`The CEO rewards ${a?.name || "the room's leader"}`, 5); break; }
+      // one strategy goes to the whole company: a sheet flies from the room's table to every desk in the building
+      case "room_sent": { const a = A(e.agent), room = this.byId.ROOM;
+        if (a) { a.mood = "proud"; chip(e.agent, "its strategy goes to everyone", GOOD, 5); }
+        if (animate) {
+          if (room) { this.word(`TO THE WHOLE COMPANY · ${e.idea}`, room, GOOD, true); this.celebrate(room, 24, false);
+            const from = { x: room.x + room.w / 2, y: room.y + room.h / 2 };
+            [...this.agents.values()].filter((x) => !x.atTable).slice(0, MAX_FLIGHTS - 4).forEach((x, k) => this.fly(from, { x: x.x, y: x.y - 14 }, "#ffe066", this.dur(0.4 + 0.02 * k), this.dur(1.1))); }
+          this.say(`The Records Room sends ${e.idea} to the whole company: ${e.votes} of ${e.of} named it, and it held on the months nobody has seen`, 6);
+        }
+        break; }
+      case "room_not_sent": if (animate) this.say("The Records Room sends nothing to the company this time: nothing they named held on the months nobody has seen", 4); break;
+      case "room_carried": ids.forEach((id, k) => chip(id, "its best is better for it", GOOD, 3.6, k * 0.06));
+        if (animate) this.say(`The Engine tried ${e.idea} on ${fmt(e.agents)} agents' own best ideas: ${fmt(e.kept)} are better for it and held too`, 5);
+        break;
       default: break;
     }
     if (animate) this.point(e);
@@ -746,7 +761,7 @@ export class Building {
       case "transfer": return { follow: e.agent, ids: [e.agent, e.swapped].filter(Boolean), rect: room(g(e.to_group)) };
       case "data_update": return { rect: this.byId.DATA };
       case "battle": return { rect: room(g(e.challenger)) };
-      case "room_meeting_start": case "room_voice": case "room_voice_missed": case "room_decision": case "room_meeting":
+      case "room_meeting_start": case "room_voice": case "room_voice_missed": case "room_decision": case "room_meeting": case "room_sent": case "room_not_sent":
         if (this.byId.ROOM) { const r = this.byId.ROOM; return { ids: this.members(e), rect: { x: r.x - 4, y: r.y - 18, w: r.w + 8, h: r.h + 22 } }; }
         return { rect: room(g(a(this.members(e)[0])?.group)) };
       case "tested": if (e.room && this.byId.ROOM) { const r = this.byId.ROOM; return { rect: { x: r.x - 4, y: r.y - 18, w: r.w + 8, h: r.h + 22 } }; } return { rect: room(g(e.agent ? a(e.agent)?.group : e.group)) };

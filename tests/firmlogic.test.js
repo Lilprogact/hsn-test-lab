@@ -2,7 +2,7 @@
 // the ticker's lines and the token help. Every figure in these tests is made up; none is shown on the site.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { from500View, auditWords, roomView, roomEntryView, roomAuditWords, madeWords, planShort, roomLiveView, whyNotFree, roomSessionCost, ROOM_SESSION } from "../js/firmlogic.js";
+import { from500View, auditWords, roomView, roomEntryView, roomAuditWords, madeWords, planShort, roomLiveView, whyNotFree, roomSessionCost, ROOM_SESSION, sentView, keepView, sessionsLeft, KEEP_BLOCKS_RUNS } from "../js/firmlogic.js";
 import { PACES, nextShift, readiness, scoreboard, eventLine, tokenHelp, MIN_TRADES_FOR_WIN_RANK, SHIFT, shiftsLeft, shiftPlan, shiftPlanWords, minutesUsedThisMonth, minutesNote, lookWords, CODE_WORDS } from "../js/firmlogic.js";
 
 test("the four paces match the engine's schedules", () => {
@@ -323,6 +323,23 @@ test("the Records Room: who is in it, what each one's job is, and how far it has
   assert.equal(nel.improved, false);
   assert.deepEqual(nel.words, ["Only when the market on that chart is sideways."], "what made the record is on the page");
   assert.match(v.intro, /Each one's record is pinned, so nobody forgets what made it/);
+  // until the Engine has looked at the months nobody has seen there is no second line
+  assert.equal(yel.recordUnseen, null); assert.equal(yel.bestUnseen, null); assert.equal(nel.bestUnseen, null);
+});
+
+test("the Records Room: every pinned record shows what it did on the months nobody has seen, beside the practice result", () => {
+  const f = roomFirm();
+  f.room.members.A032.record_unseen = { sets: 328, pips: 13192.4, win_rate_pct: 38.4, pnl_gbp: 2553.2, held: true, words: "it HELD: it made money on the months nobody has seen too" };
+  f.room.members.A032.best_unseen = { sets: 150, pips: 9100, win_rate_pct: 41.3, pnl_gbp: -310.5, held: false, words: "it did NOT hold: it lost money on the months nobody has seen" };
+  f.room.members.A014.record_unseen = { sets: 12, pips: 800, win_rate_pct: 50, pnl_gbp: 90, held: false, words: "too few trades on the months nobody has seen to say (fewer than 20)" };
+  f.room.members.A013.record_unseen = { sets: null, held: false, words: "not checked on the months nobody has seen" };
+  f.room.members.A013.best_unseen = { sets: 40, pips: 1, win_rate_pct: 50, pnl_gbp: 5, held: true, words: "x" };      // no best for its job yet: nothing is shown for one
+  const v = roomView(f), [yel, kel] = v.sides[0].members, nel = v.sides[1].members[0];
+  assert.deepEqual(yel.recordUnseen, { held: true, unknown: false, line: "On the months nobody has seen: 13,192 pips · 38.4% wins · 328 trades · made £2,553. It HELD." });
+  assert.deepEqual(yel.bestUnseen, { held: false, unknown: false, line: "I15156 on the months nobody has seen: 9,100 pips · 41.3% wins · 150 trades · lost £311. It did NOT hold." });
+  assert.deepEqual(kel.recordUnseen, { held: false, unknown: true, line: "On the months nobody has seen: 800 pips · 50% wins · 12 trades · made £90. Too few trades there to say." });
+  assert.deepEqual(nel.recordUnseen, { held: false, unknown: true, line: "On the months nobody has seen: not checked (its price data is not loaded)." });
+  assert.equal(nel.bestUnseen, null);
 });
 
 test("the Records Room: the frontier says where the room started and what has moved", () => {
@@ -526,17 +543,20 @@ test("a session of the room while it runs: which part it is in, what each of the
   assert.equal(roomLiveView(null, f, now), null); assert.equal(roomLiveView({ mode: "firm", stage: "Agents thinking", updated_at: "2026-11-15T13:20:00Z" }, f, now), null, "an ordinary shift is not a session of the room");
   const t = roomLiveView(live({ session: 4, phase: "thinking", members: { A032: { state: "researching", detail: "by session" }, A014: { state: "brought", idea: "I15320", pips: 812.4, win: 51.2, sets: 40 }, A013: { state: "researching", detail: "the growth challenge for I04158" } }, voices: {}, votes: null }), f, now);
   assert.equal(t.running, true); assert.equal(t.session, 4); assert.equal(t.phaseWords, "Alone: each of the six is thinking on its own"); assert.equal(t.minutes, 3);
-  assert.deepEqual(t.steps.map((x) => x.state), ["now", "todo", "todo"]);
+  assert.deepEqual(t.steps.map((x) => x.state), ["now", "todo", "todo", "todo"]);
   assert.deepEqual(t.members.map((m) => [m.name, m.doing, m.busy, m.done]), [["Yelwen Kingsshaw", "asks the Engine for its results by session", true, false],
     ["Kelra Ravenmere", "finished alone: brings I15320 (812 pips, 51.2% wins, 40 trades)", false, true], ["Nelen Yewley", "asks the Engine about the growth challenge for I04158", true, false]]);
   assert.equal(t.finished, 1); assert.equal(t.of, 3);
   const m = roomLiveView(live({ session: 4, phase: "meeting", members: { A032: { state: "in_meeting" }, A014: { state: "in_meeting" }, A013: { state: "in_meeting" } },
     voices: { A032: { vote: "merge", say: "I would take its exit." } }, votes: null }), f, now);
-  assert.deepEqual(m.steps.map((x) => x.state), ["done", "now", "todo"]); assert.equal(m.spoke, 1); assert.equal(m.members[0].say, "I would take its exit."); assert.equal(m.members[0].vote, "merge"); assert.equal(m.votesLine, "");
+  assert.deepEqual(m.steps.map((x) => x.state), ["done", "now", "todo", "todo"]); assert.equal(m.spoke, 1); assert.equal(m.members[0].say, "I would take its exit."); assert.equal(m.members[0].vote, "merge"); assert.equal(m.votesLine, "");
   const e = roomLiveView(live({ session: 4, phase: "engine", members: {}, voices: {}, votes: { merge: 1, keep_separate: 2, silent: 0, decision: "keep_separate" } }), f, now);
-  assert.deepEqual(e.steps.map((x) => x.state), ["done", "done", "now"]); assert.equal(e.votesLine, "The vote: 2 to 1 to keep the ideas apart.");
+  assert.deepEqual(e.steps.map((x) => x.state), ["done", "done", "now", "todo"]); assert.equal(e.votesLine, "The vote: 2 to 1 to keep the ideas apart.");
+  const co = roomLiveView(live({ session: 4, phase: "company", members: {}, voices: {}, votes: null }), f, now);
+  assert.deepEqual(co.steps.map((x) => [x.label, x.state]), [["1 · Alone", "done"], ["2 · Together", "done"], ["3 · The Engine", "done"], ["4 · The company", "now"]]);
+  assert.equal(co.phaseWords, "The Engine is trying what the room sent on every agent's own best idea");
   const done = roomLiveView(live({ session: 4, phase: "done", members: {}, voices: {}, votes: { merge: 3, keep_separate: 0, decision: "merge" } }, { stage: "Cycle finished" }), f, now);
-  assert.equal(done.running, false); assert.deepEqual(done.steps.map((x) => x.state), ["done", "done", "done"]); assert.equal(done.votesLine, "The vote: 3 to 0 for ONE joint strategy.");
+  assert.equal(done.running, false); assert.deepEqual(done.steps.map((x) => x.state), ["done", "done", "done", "done"]); assert.equal(done.votesLine, "The vote: 3 to 0 for ONE joint strategy.");
   assert.equal(roomLiveView(live({ session: 4, phase: "thinking", members: {} }), f, now + 7 * 60 * 1000).running, false, "a live file that has gone quiet is not shown as running");
 });
 
@@ -552,3 +572,96 @@ test("before a session of the room is started, its cost is said in the firm's ow
   assert.equal(roomSessionCost(poor).ok, false); assert.match(roomSessionCost(poor).why, /^\$0\.50 is left of this month's AI budget, and a session needs at least \$1\.00\./);
   assert.equal(roomSessionCost({}).ok, false);
 });
+
+// ── one strategy goes to the whole company after every session (15 Nov 2026, evening) ──────────────────────────────
+function sentRoom() {
+  const f = sessionRoom("keep_separate");
+  f.budget = { firm_spent_usd: 185.43, firm_budget_usd: 200 };
+  f.room.last_think = { ...(f.room.last_think || {}), session: 3, at: "2026-11-15T19:10:00Z", cost_usd: 2.35, seconds: 540 };
+  f.room.thinks = 3;
+  f.room.sent = [{ session: 3, cycle: 100, at: "2026-11-15T19:06:00Z", idea: "I15288", by: "A013", by_name: "Nelen Yewley", votes: 3, of: 5, voters: ["A032", "A014", "A013"], tie: false,
+    why: [{ agent: "A032", why: "Its exit is the plainest thing here." }], rules: { instrument: "XAUUSD", timeframes: [60] }, in_words: ["Take the indicator's XAUUSD signals on the 1H chart."], hypothesis: "one hour, flat chart",
+    card: { idea: "I15288", pips: 24374.2, win_rate_pct: 54.3, sets: 151, pnl_gbp: 7100.4 }, unseen: { sets: 148, pips: 5216.1, win_rate_pct: 31.1, pnl_gbp: 351.2 },
+    tally: [{ idea: "I15474", votes: 2, voters: ["A015", "A016"], held: false, note: "did not hold: it lost money on the months nobody has seen" }, { idea: "I15288", votes: 3, held: true, note: "held" }],
+    note: "3 of the 5 who spoke named it.",
+    carried: { at: 99, of: 99, done: true, agents: 61, tried: 244, no_gain: 40, did_not_hold: 9, not_comparable: 38,
+      kept: [{ agent: "A041", name: "Mira Holt", base: "I09001", idea: "I15601", what: "its exit", own: true, before: { pips: 9100, win_rate_pct: 44.2 }, after: { pips: 12850.6, win_rate_pct: 47.9 } },
+        { agent: "A050", name: "Tam Ode", base: "I09002", idea: "I11111", what: "its charts", own: false, before: { pips: 500, win_rate_pct: 40 }, after: { pips: 900, win_rate_pct: 41 } }] } }];
+  f.room.keep = { session: 3, can_go_on: true, ai_left_usd: 14.57, why_not: "" };
+  return f;
+}
+
+test("what the room sent to the whole company: both sets of months side by side, who named it, what else was named, what the Engine made of it", () => {
+  const v = roomView(sentRoom());
+  assert.equal(v.sent.length, 1); assert.equal(v.notSent, null); assert.equal(v.keep.can_go_on, true);
+  const x = v.sent[0];
+  assert.equal(x.title, "Session 3: I15288 by Nelen Yewley"); assert.equal(x.votesLine, "3 of the 5 who spoke named it.");
+  assert.deepEqual(x.voters, ["Yelwen Kingsshaw", "Kelra Ravenmere", "Nelen Yewley"]); assert.deepEqual(x.why, [{ who: "Yelwen Kingsshaw", words: "Its exit is the plainest thing here." }]);
+  assert.equal(x.practice, "24,374 pips · 54.3% wins · 151 trades · made £7,100"); assert.equal(x.unseen, "5,216 pips · 31.1% wins · 148 trades · made £351", "the CEO sees what it did on the months nobody had seen");
+  assert.deepEqual(x.passedOver, ["I15474: 2 votes, did not hold: it lost money on the months nobody has seen"]);
+  assert.equal(x.carried.done, true); assert.equal(x.carried.kept.length, 2);
+  assert.match(x.carried.line, /^The Engine tried its parts \(its filters, its exit, its trade limits, its charts\) on 61 agents' own best ideas: 2 of them are better for it and held too; 9 improved on the practice months but did not hold, so nothing was kept; 40 were not improved; 38 could not be compared /);
+  assert.equal(x.carried.kept[0].line, "Mira Holt: its best I09001 with its exit is I15601: 9,100 → 12,851 pips, 44.2% → 47.9% wins on the practice months");
+  assert.match(x.carried.kept[1].line, / \(already in the library\)$/);
+  const part = sentView({ ...sentRoom().room.sent[0], tie: true, carried: { at: 40, of: 99, done: false, agents: 25, kept: [] } });
+  assert.match(part.votesLine, /Another had as many votes: this one made more money on the months nobody has seen\.$/); assert.match(part.carried.line, /It has reached 40 of 99 agents and carries on in the next session\.$/);
+  assert.equal(sentView({ idea: "I1", by: "A1", at: "x" }).carried, null);
+  const none = sentRoom(); none.room.last_send = { session: 4, idea: null, note: "None of the six named a strategy to send." };
+  assert.deepEqual(roomView(none).notSent, { session: 4, note: "None of the six named a strategy to send." });
+  assert.equal(eventLine({ kind: "room_sent", agent: "A013", idea: "I15288", votes: 3, of: 5 }, (id) => ({ A013: "Nelen Yewley" }[id] || id)).text,
+    "The Records Room sends I15288 to the whole company: 3 of the 5 who spoke named it, and it made money on the months nobody has seen too (Nelen Yewley's strategy)");
+  assert.equal(eventLine({ kind: "room_not_sent", note: "None of the six named a strategy to send." }).text, "The Records Room sends nothing to the company this time: None of the six named a strategy to send");
+  assert.equal(eventLine({ kind: "room_carried", idea: "I15288", agents: 61, kept: 2, done: true }).text, "The Engine tried I15288 on 61 agents' own best ideas: 2 of them are better for it and held too");
+  assert.match(eventLine({ kind: "room_carried", idea: "I15288", agents: 20, kept: 0, done: false }).text, /\(it carries on with the rest next time\)$/);
+});
+
+test("back to back: how many sessions the money pays for, what the strip says, and that nothing else is sent while it runs", () => {
+  assert.equal(sessionsLeft(14.57, 2.35), 6, "six sessions: the sixth starts with $2.82 left and the seventh would have $0.47");
+  assert.equal(sessionsLeft(2.5, 2.35), 1); assert.equal(sessionsLeft(0.99, 2.35), 0); assert.equal(sessionsLeft(4.4, 2.35), 2); assert.equal(sessionsLeft(4.3, 2.35), 1, "a next one needs $2.00 left");
+  assert.equal(sessionsLeft(10, 0), 4, "before any session has been run: at the usual $2.50 (the fourth starts with $2.50 left)");
+  const f = sentRoom(), now = Date.parse("2026-11-15T19:12:00Z");
+  const off = keepView(f, { firm: {} }, null, null, "", now);
+  assert.equal(off.on, false); assert.equal(off.canStart, true); assert.equal(off.sessions, 6);
+  assert.equal(off.line, "$14.57 of this month's AI money is left: enough for about 6 sessions (the last one cost $2.35).");
+  assert.match(off.confirm, /^Keep the Records Room running, back to back\?/); assert.match(off.confirm, /until this month's AI money is used or you press Stop/); assert.match(off.confirm, /only if it also made money on the months nobody has seen/);
+  const live = { running: true, session: 4, phaseWords: "Alone: each of the six is thinking on its own" };
+  const on = keepView(f, { firm: { room_keep_running: true } }, { next: true, at: "2026-11-15T19:10:30Z", why: "Session 2 of this run of sessions has been started." }, live, "", now);
+  assert.equal(on.on, true); assert.equal(on.canStart, false);
+  assert.match(on.line, /^Running back to back\. Session 4 is in progress; when it has saved, the next one starts by itself\. \$14\.57 of this month's AI money is left/);
+  const between = keepView(f, { firm: { room_keep_running: true } }, { next: true, at: "2026-11-15T19:10:30Z" }, null, "", now);
+  assert.match(between.line, /^Switched on\. The next session starts by itself within a minute or two/);
+  // the chain's own word that it has ended counts before the switch has been switched off
+  const ended = keepView(f, { firm: { room_keep_running: true } }, { next: false, at: "2026-11-15T19:10:40Z", why: "No further session was started: $0.47 is left of the month's AI money and a session needs about $2.00." }, null, "", now);
+  assert.equal(ended.on, false); assert.match(ended.line, /^No further session was started: \$0\.47 is left of the month's AI money and a session needs about \$2\.00\. /);
+  // a chain's word from before the newest session is old news
+  assert.equal(keepView(f, { firm: { room_keep_running: true } }, { next: false, at: "2026-11-15T18:00:00Z", why: "x" }, null, "", now).on, true);
+  // ... and so is the "no more" of the run of sessions BEFORE this one, once the switch has been switched on again: the
+  // settings carry the time they were last saved, and the first session of the new run is under way (found in a real
+  // browser on 15 Nov 2026: the page said "not running back to back" all through the first session of a second run)
+  const again = keepView(f, { updated_at: "2026-11-15T19:11:30Z", firm: { room_keep_running: true } }, { next: false, at: "2026-11-15T19:10:40Z", why: "Stopped by the CEO" }, live, "", now);
+  assert.equal(again.on, true); assert.match(again.line, /^Running back to back\. Session 4 is in progress/);
+  const justOn = keepView(f, { updated_at: "2026-11-15T19:11:30Z", firm: { room_keep_running: true } }, { next: false, at: "2026-11-15T19:10:40Z", why: "Stopped by the CEO" }, null, "", now);
+  assert.match(justOn.line, /^Switched on\. /, "switched on a moment ago and the session has not shown yet: that is not a stall");
+  // the chain said "no more" after the settings were last saved: it has ended, whatever the switch still says
+  assert.equal(keepView(f, { updated_at: "2026-11-15T19:00:00Z", firm: { room_keep_running: true } }, { next: false, at: "2026-11-15T19:10:40Z", why: "x" }, null, "", now).on, false);
+  // the page's own "The Records Room is in session…" counts as running before GitHub shows it
+  assert.match(keepView(f, { updated_at: "2026-11-15T19:11:50Z", firm: { room_keep_running: true } }, null, null, "The Records Room is in session… (the first of a run of sessions, back to back)", now).line, /^Running back to back\. Session 4 is in progress/);
+  // switched on, but nothing has started for a long time: say so
+  const dead = keepView(f, { firm: { room_keep_running: true } }, { next: true, at: "2026-11-15T19:10:30Z" }, null, "", now + 30 * 60 * 1000);
+  assert.match(dead.line, /^It is switched on, but no session has started since 32 minutes ago, so something stopped it\. Press Stop, then start it again\./);
+  // the CEO's Stop while a session runs
+  assert.equal(keepView(f, { firm: { room_keep_running: false } }, null, live, "", now).line, "Not running back to back: the session in progress is the last one. Nothing more starts by itself.");
+  const closed = sentRoom(); closed.room.open = false;
+  assert.equal(keepView(closed, {}, null, null).canStart, false); assert.equal(keepView(closed, {}, null, null).startWhy, "The room is closed.");
+  const poor = sentRoom(); poor.budget = { firm_spent_usd: 199.5, firm_budget_usd: 200 };
+  assert.equal(keepView(poor, {}, null, null).canStart, false); assert.match(keepView(poor, {}, null, null).startWhy, /^\$0\.50 is left of this month's AI money/);
+  // while it runs back to back nothing else is sent to GitHub, not even between two sessions
+  assert.match(whyNotFree("", null, true), /^One thing at a time\. The Records Room is running back to back: .* Press “Stop after this session” on the Records Room page/);
+  assert.equal(whyNotFree("", null, false), ""); assert.match(whyNotFree("Saving…", null, true), /still running on GitHub: Saving/);
+  // the other pages (a backtest, the Million Challenge) ask with the settings and the chain's word alone, no firm file
+  assert.equal(keepView(null, { updated_at: "2026-11-15T19:11:30Z", firm: { room_keep_running: true } }, { next: true, at: "2026-11-15T19:21:00Z" }, null).on, true);
+  assert.equal(keepView(null, { updated_at: "2026-11-15T19:11:30Z", firm: { room_keep_running: true } }, { next: false, at: "2026-11-15T19:21:00Z" }, null).on, false);
+  assert.equal(keepView(null, { firm: {} }, null, null).on, false); assert.equal(keepView(null, null, null, null).on, false);
+  assert.match(KEEP_BLOCKS_RUNS, /^The Records Room is running back to back, so this was not started/); assert.match(KEEP_BLOCKS_RUNS, /Stop after this session/);
+});
+
