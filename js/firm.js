@@ -185,9 +185,9 @@ export class FirmView {
           + ` · ${c.challenges ?? 0} challenges (${c.challenges_passed ?? 0} passed)`);
         sub = h("div", {}, h("div", { class: "progress shift-bar", role: "progressbar", "aria-valuenow": Math.round(l.percent || 0), "aria-valuemin": 0, "aria-valuemax": 100 }, h("div", { style: `width:${Math.max(2, Math.min(100, l.percent || 0))}%` })),
           h("span", { class: "muted small" }, c.saved_at ? `Progress saved ${ukDateTime(c.saved_at)} UK (${c.saves} saves this shift)` : "Progress is saved every few minutes while it works."));
-      } else if (stoppedLine(f, minutesUsedThisMonth(state.minutes))) {
+      } else if (stoppedLine(f, minutesUsedThisMonth(state.minutes), this.schedule)) {
         // started, but a monthly budget as now set is used up: say so plainly, and that Pause stops the looking in
-        line = h("span", { class: "warnc" }, stoppedLine(f, minutesUsedThisMonth(state.minutes)));
+        line = h("span", { class: "warnc" }, stoppedLine(f, minutesUsedThisMonth(state.minutes), this.schedule));
       } else {
         const nxt = nextShift(f.settings?.pace, this.schedule, new Date());
         line = `Working in shifts, ${PACES[f.settings?.pace]?.words || PACES["6h"].words}. Shift ${f.cycle || 0} ${f.last_cycle?.finished_at ? "finished " + ukDateTime(f.last_cycle.finished_at) + " UK" : "has not finished yet"}. `

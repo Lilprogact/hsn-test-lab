@@ -22,10 +22,12 @@ test("the next shift is the next tick of the chosen schedule, said with 'about'"
   assert.match(nextShift("6h", null, at("2026-11-14T00:30:00Z")).text, /in about 6 hours/);
   assert.equal(nextShift("nonstop", null).at, null);
   assert.match(nextShift("nonstop", null).text, /as soon as this one ends/);
-  assert.match(nextShift("3h", { on: false }).text, /No shift is scheduled/);
+  assert.match(nextShift("3h", { on: false }).text, /No shift is scheduled right now \(the schedule is switched off on GitHub\)/);
+  assert.equal(nextShift("nonstop", { on: false, waiting: "minutes" }).text, "No shift is scheduled: the firm's GitHub minutes for this month are used, so its schedule is off and it uses none. "
+    + "It comes back by itself in the new month, or when the minutes budget is raised.");
   const slow = nextShift("1h", { on: true, slowed: true }, at("2026-11-14T10:40:00Z"));
   assert.equal(slow.at.toISOString(), "2026-11-14T12:17:00.000Z");
-  assert.match(slow.text, /minutes limit is used up/);
+  assert.match(slow.text, /slower than the chosen pace because this month's AI budget is used up, so the Engine works alone\.$/);
   assert.equal(nextShift("weekly", null, at("2026-11-14T05:00:00Z")).at.toISOString(), "2026-11-14T06:17:00.000Z", "an unknown pace reads as every 6 hours");
 });
 
@@ -688,15 +690,21 @@ test("the budget boxes are for the whole month: a number that would stop the wor
 
   // the top strip for a firm that is started while a budget is used up
   assert.equal(stoppedLine(f, 1700), "");
-  const both = stoppedLine({ ...f, settings: { monthly_api_budget_usd: 6, monthly_minutes_budget: 1800 } }, 1840);
-  assert.equal(both, "Started. No money can be spent: this month's AI budget is set to $6.00 and $185.43 is already spent, so no AI runs (not the firm's agents, not the Records Room's thinking). "
+  const firmSix = { ...f, settings: { monthly_api_budget_usd: 6, monthly_minutes_budget: 1800 } };
+  const noAi = "Started. No money can be spent: this month's AI budget is set to $6.00 and $185.43 is already spent, so no AI runs (not the firm's agents, not the Records Room's thinking). ";
+  // ... the engine has switched the firm's schedule off (16 Nov 2026: a started firm that cannot run costs nothing)
+  assert.equal(stoppedLine(firmSix, 1840, { on: false, waiting: "minutes" }), noAi
     + "On GitHub no shift can run before the new month either: the firm's GitHub minutes for this month are used (1,840 of 1,800). "
-    + "The firm looks in four times a day meanwhile, and each look uses a couple of GitHub minutes (Pause stops that). The Engine's own work needs no AI: see the Records Room page.");
-  assert.equal(stoppedLine(f, 1838), "Started. On GitHub no shift can run before the new month: the firm's GitHub minutes for this month are used (1,838 of 1,800). "
-    + "The firm looks in four times a day meanwhile, and each look uses a couple of GitHub minutes (Pause stops that). The Records Room can still run its own sessions.");
-  assert.equal(stoppedLine({ ...f, settings: { monthly_api_budget_usd: 6, monthly_minutes_budget: 2000 } }, 1840),
-    "Started. No money can be spent: this month's AI budget is set to $6.00 and $185.43 is already spent, so no AI runs (not the firm's agents, not the Records Room's thinking). "
-    + "The firm's shifts go on with the Engine only, four times a day. The Engine's own work needs no AI: see the Records Room page.");
+    + "Its schedule there is off meanwhile, so it uses no GitHub minutes, and it comes back by itself in the new month or when the minutes budget is raised. The Engine's own work needs no AI: see the Records Room page.");
+  // ... it has not looked in yet since that change: the schedule is still on until it does
+  assert.equal(stoppedLine(firmSix, 1840, { on: true, slowed: true }), noAi
+    + "On GitHub no shift can run before the new month either: the firm's GitHub minutes for this month are used (1,840 of 1,800). "
+    + "At its next look the firm switches its own schedule off until the new month, so that waiting uses no GitHub minutes. The Engine's own work needs no AI: see the Records Room page.");
+  assert.equal(stoppedLine(firmSix, 1840), stoppedLine(firmSix, 1840, { on: true }), "no word from the schedule file reads as still on");
+  assert.equal(stoppedLine(f, 1838, { on: false, waiting: "minutes" }), "Started. On GitHub no shift can run before the new month: the firm's GitHub minutes for this month are used (1,838 of 1,800). "
+    + "Its schedule there is off meanwhile, so it uses no GitHub minutes, and it comes back by itself in the new month or when the minutes budget is raised. The Records Room can still run its own sessions.");
+  assert.equal(stoppedLine({ ...f, settings: { monthly_api_budget_usd: 6, monthly_minutes_budget: 2000 } }, 1840, { on: true, slowed: true }),
+    noAi + "The firm's shifts go on with the Engine only, four times a day. The Engine's own work needs no AI: see the Records Room page.");
 
   // the Records Room's strip: nothing left because the budget is set below what is spent
   const room = sentRoom(); room.budget = { firm_spent_usd: 185.4322, firm_budget_usd: 6 };

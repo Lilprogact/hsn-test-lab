@@ -79,6 +79,10 @@ export function minutesUsedThisMonth(minutes, now = new Date()) {
 
 /** When the next scheduled shift is due. GitHub starts scheduled runs a few minutes late, so the text says "about". */
 export function nextShift(pace, schedule, now = new Date()) {
+  // started, but the firm's own GitHub minutes for the month are used: the engine switches the schedule off so that a
+  // firm that cannot run costs nothing, and the daily Setup check brings it back (scripts/firm_schedule.py, keep)
+  if (schedule && schedule.waiting === "minutes") return { at: null, text: "No shift is scheduled: the firm's GitHub minutes for this month are used, so its schedule is off and it uses none. "
+    + "It comes back by itself in the new month, or when the minutes budget is raised." };
   if (schedule && schedule.on === false) return { at: null, text: "No shift is scheduled right now (the schedule is switched off on GitHub)." };
   const slowed = !!(schedule && schedule.slowed);
   const p = PACES[slowed ? "6h" : pace] || PACES["6h"];
@@ -89,7 +93,7 @@ export function nextShift(pace, schedule, now = new Date()) {
   while (at <= now || at.getUTCHours() % p.cron.every !== 0) at.setUTCHours(at.getUTCHours() + 1);
   const mins = Math.round((at - now) / 60000);
   const wait = mins >= 90 ? `in about ${Math.round(mins / 60)} hours` : mins >= 2 ? `in about ${mins} minutes` : "any minute now";
-  return { at, text: `Next shift about ${hhmmUK(at)} UK (${wait})${slowed ? "; slower than the chosen pace because this month's GitHub minutes limit is used up" : ""}.` };
+  return { at, text: `Next shift about ${hhmmUK(at)} UK (${wait})${slowed ? "; slower than the chosen pace because this month's AI budget is used up, so the Engine works alone" : ""}.` };
 }
 
 /**
@@ -114,16 +118,20 @@ export function budgetCheck(firm, apiBudget, minutesBudget, minutesUsed, verb = 
 
 /** The top strip for a firm that is started while a monthly budget, as it is now set, is used up ("" when neither is).
  *  It says what cannot run and why, that nothing is being spent, and what still goes on. As the engine has it
- *  (scripts/guard.py, scripts/firm_schedule.py): the firm's own minutes budget used up stops its shifts on GitHub;
- *  the AI budget used up stops all AI, and shifts that can still run go on with the Engine only; either way the
- *  schedule drops to four looks a day, each a short run on GitHub. */
-export function stoppedLine(firm, minutesUsed) {
+ *  (scripts/guard.py, scripts/firm_schedule.py): the firm's own minutes budget used up stops its shifts on GitHub and
+ *  its schedule is switched off until the new month, so that it uses no minutes (`schedule` is
+ *  status/firm_schedule.json: `waiting` says the engine has done so); the AI budget alone used up stops all AI, and
+ *  the shifts go on with the Engine only, four times a day. */
+export function stoppedLine(firm, minutesUsed, schedule = null) {
   const s = firm?.settings || {}, bc = budgetCheck(firm, s.monthly_api_budget_usd, s.monthly_minutes_budget, minutesUsed);
   if (!bc.apiStops && !bc.minutesStop) return "";
   const noAi = bc.apiStops ? `No money can be spent: this month's AI budget is set to $${(+s.monthly_api_budget_usd).toFixed(2)} and $${bc.spent.toFixed(2)} is already spent, `
     + `so no AI runs (not the firm's agents, not the Records Room's thinking). ` : "";
+  const off = !!schedule && (schedule.waiting === "minutes" || schedule.on === false);
   const noShift = bc.minutesStop ? `On GitHub no shift can run before the new month${bc.apiStops ? " either" : ""}: the firm's GitHub minutes for this month are used (${n0(bc.used)} of ${n0(s.monthly_minutes_budget)}). `
-    + `The firm looks in four times a day meanwhile, and each look uses a couple of GitHub minutes (Pause stops that). ` : `The firm's shifts go on with the Engine only, four times a day. `;
+    + (off ? `Its schedule there is off meanwhile, so it uses no GitHub minutes, and it comes back by itself in the new month or when the minutes budget is raised. `
+      : `At its next look the firm switches its own schedule off until the new month, so that waiting uses no GitHub minutes. `)
+    : `The firm's shifts go on with the Engine only, four times a day. `;
   const still = bc.apiStops ? "The Engine's own work needs no AI: see the Records Room page." : "The Records Room can still run its own sessions.";
   return `Started. ${noAi}${noShift}${still}`;
 }
