@@ -28,3 +28,22 @@
 .check-facts { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px var(--pad); margin: 0 0 14px; }
 .check-facts ul { margin: 4px 0 8px; padding-left: 20px; }
 .check-facts li { margin: 3px 0; }
+
+/* The forward test: the ten versions agent by agent, each with its figures, where it stands and its frozen rules to open. */
+.check-forward .check-group { border-top: 1px solid var(--line); padding: 10px 0 0; margin-top: 8px; }
+.check-forward .check-name { font-weight: 650; margin: 0; }
+.check-facts .check-versions { list-style: none; margin: 0; padding: 0; }
+.check-facts .check-versions > li { margin: 0; padding: 8px 0 4px; }
+.check-versions > li + li { border-top: 1px dashed var(--line); }
+.check-version { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: start; }
+.check-kind { font-size: .92rem; font-weight: 600; color: var(--muted); }
+.check-chip { font-size: .8rem; font-weight: 650; white-space: nowrap; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line2); color: var(--muted); }
+.check-chip.ok { color: var(--green); border-color: var(--green2); }
+.check-chip.no { color: var(--red); border-color: var(--red); }
+.check-chip.unread { color: var(--amber); border-color: var(--amber); }
+.check-rules { border: 0; border-radius: 0; padding: 0; background: none; }
+.check-rules summary { font-size: .85rem; font-weight: 600; color: var(--blue); padding: 9px 0; }
+.check-facts .check-rules ul { margin: 0 0 6px; padding-left: 20px; font-size: .9rem; }
+.check-marks { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 12px; }
+.check-marks ol { margin: 4px 0 8px; padding-left: 22px; }
+.check-marks li { margin: 3px 0; }
