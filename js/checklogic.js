@@ -173,18 +173,23 @@ export function demoFacts(probe, zone) {
   if (!probe.ok) return { ok: false, at, lines: [sentence(probe.why) || "The demo account could not be read."] };
   const lines = [];
   const acc = probe.account || {};
-  if (acc.leverage) lines.push(`Leverage 1:${count(acc.leverage)}. ${acc.hedging === true ? "It is a hedging account: a buy and a sell can be open together." : acc.hedging === false ? "It is not a hedging account." : ""}`.trim());
-  const gold = probe.symbols?.XAUUSD;
-  const m = gold?.margin_for_smallest_trade;
+  const month = (day) => { const t = time(`${day}T00:00:00Z`); return t === null ? String(day || "").slice(0, 7) : new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(t)); };
+  if (acc.leverage) lines.push(`The account says leverage 1:${count(acc.leverage)}. ${acc.hedging === true ? "It is a hedging account: a buy and a sell can be open together." : acc.hedging === false ? "It is not a hedging account." : ""}`.trim());
+  const m = probe.symbols?.XAUUSD?.margin_for_smallest_trade;
   if (m) {
-    lines.push(`The smallest gold trade is ${m.lots === 1 ? "1 ounce" : `${m.lots} lots`}. MetaTrader works out ${Number(m.margin).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${m.in} of margin for it at a price of ${Number(m.price).toLocaleString("en-GB", { maximumFractionDigits: 2 })}${m.market_value_over_margin ? `, which is 1:${count(Math.round(m.market_value_over_margin))}` : ""}.`);
+    lines.push(`For gold, MetaTrader works out ${Number(m.margin).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${m.in} of margin for the smallest trade (${m.lots === 1 ? "1 ounce" : `${m.lots} lots`} at ${Number(m.price).toLocaleString("en-GB", { maximumFractionDigits: 2 })})${m.market_value_over_margin ? `: that is 1:${count(Math.round(m.market_value_over_margin))}` : ""}.`);
   }
   const hist = probe.history?.XAUUSD;
   if (hist?.served === false) lines.push("MetaTrader gave no gold history in the time allowed, so how far back it goes is not known yet.");
   else if (hist) {
-    const late = hist.stopped === "out of time" ? " The look back ran out of time there, so it may go further." : "";
-    if (hist.one_minute_bars_back_to) lines.push(`Real 1-minute gold bars go back to at least ${hist.one_minute_bars_back_to.slice(0, 7)}.${late}`);
-    if (hist.any_bars_back_to && hist.any_bars_back_to !== hist.one_minute_bars_back_to) lines.push(`Thinner gold bars go back to ${hist.any_bars_back_to.slice(0, 7)}.`);
+    const days = hist.days || [];
+    const dense = hist.one_minute_bars_back_to;
+    const older = days.filter((d) => dense && d.day < dense && d.kind !== "1-minute").map((d) => d.day).sort();      // days looked at beyond the real 1-minute bars
+    const outOfTime = hist.stopped === "out of time";
+    if (dense && older.length) lines.push(`Real 1-minute gold bars go back to ${month(dense)} at least, and stop somewhere before that: ${month(older[older.length - 1])} has thinner bars only.`);
+    else if (dense) lines.push(`Real 1-minute gold bars go back to ${month(dense)} at least.${outOfTime ? " The look back ran out of time there, so they may go further." : ""}`);
+    else if (days.length) lines.push("No real 1-minute gold bars were found on the days looked at.");
+    if (hist.any_bars_back_to && hist.any_bars_back_to !== dense) lines.push(`Thinner gold bars go back to ${month(hist.any_bars_back_to)}${outOfTime ? " at least (the look back ran out of time there)" : ""}.`);
   }
   return { ok: true, at, lines };
 }

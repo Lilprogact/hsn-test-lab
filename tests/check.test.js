@@ -180,19 +180,29 @@ test("the sentence at the top counts what needs him, and never says all is well 
 
 test("what the demo account itself reports: facts only, in plain sentences", () => {
   assert.equal(demoFacts(null, NICOSIA), null, "no file, no block on the page");
-  const probe = { at: "2026-11-16T16:40:00Z", ok: true, account: { leverage: 200, hedging: true },
-    symbols: { XAUUSD: { margin_for_smallest_trade: { lots: 1, price: 3854.31, margin: 19.27, in: "USD", market_value_over_margin: 200.02 } } },
-    history: { XAUUSD: { served: true, stopped: "two empty years in a row", one_minute_bars_back_to: "2021-10-13", any_bars_back_to: "2016-07-13" } } };
+  const day = (d, kind) => ({ day: d, kind });
+  const probe = { at: "2026-11-16T16:53:03Z", ok: true, account: { leverage: 100, hedging: true },
+    symbols: { XAUUSD: { margin_for_smallest_trade: { lots: 1, price: 3857.79, margin: 19.29, in: "USD", market_value_over_margin: 199.99 } } },
+    history: { XAUUSD: { served: true, stopped: "out of time", one_minute_bars_back_to: "2019-07-10", any_bars_back_to: "2017-07-12",
+      days: [day("2026-07-08", "1-minute"), day("2019-07-10", "1-minute"), day("2018-07-11", "thinner"), day("2017-07-12", "thinner")] } } };
   const f = demoFacts(probe, NICOSIA);
   assert.equal(f.ok, true);
-  assert.equal(f.at, "16 Nov 2026, 16:40 GMT (18:40 your time)");
-  assert.deepEqual(f.lines, ["Leverage 1:200. It is a hedging account: a buy and a sell can be open together.",
-    "The smallest gold trade is 1 ounce. MetaTrader works out 19.27 USD of margin for it at a price of 3,854.31, which is 1:200.",
-    "Real 1-minute gold bars go back to at least 2021-10.", "Thinner gold bars go back to 2016-07."]);
-  const short = demoFacts({ ...probe, history: { XAUUSD: { served: true, stopped: "out of time", one_minute_bars_back_to: "2023-07-12", any_bars_back_to: "2023-07-12" } } }, NICOSIA);
-  assert.equal(short.lines[2], "Real 1-minute gold bars go back to at least 2023-07. The look back ran out of time there, so it may go further.");
+  assert.equal(f.at, "16 Nov 2026, 16:53 GMT (18:53 your time)");
+  assert.deepEqual(f.lines, ["The account says leverage 1:100. It is a hedging account: a buy and a sell can be open together.",
+    "For gold, MetaTrader works out 19.29 USD of margin for the smallest trade (1 ounce at 3,857.79): that is 1:200.",
+    "Real 1-minute gold bars go back to July 2019 at least, and stop somewhere before that: July 2018 has thinner bars only.",
+    "Thinner gold bars go back to July 2017 at least (the look back ran out of time there)."]);
+  // the look back stopped while the bars were still real 1-minute ones: it says so, and claims nothing beyond
+  const short = demoFacts({ ...probe, history: { XAUUSD: { served: true, stopped: "out of time", one_minute_bars_back_to: "2023-07-12", any_bars_back_to: "2023-07-12", days: [day("2023-07-12", "1-minute")] } } }, NICOSIA);
+  assert.equal(short.lines[2], "Real 1-minute gold bars go back to July 2023 at least. The look back ran out of time there, so they may go further.");
   assert.equal(short.lines.length, 3);
+  // the history's own end was reached
+  const whole = demoFacts({ ...probe, history: { XAUUSD: { served: true, stopped: "two empty years in a row", one_minute_bars_back_to: "2021-10-13", any_bars_back_to: "2016-07-13",
+    days: [day("2021-10-13", "1-minute"), day("2021-07-14", "thinner"), day("2016-07-13", "thinner"), day("2015-07-08", "nothing"), day("2014-07-09", "nothing")] } } }, NICOSIA);
+  assert.equal(whole.lines[2], "Real 1-minute gold bars go back to October 2021 at least, and stop somewhere before that: July 2021 has thinner bars only.");
+  assert.equal(whole.lines[3], "Thinner gold bars go back to July 2016.");
   assert.equal(demoFacts({ ...probe, history: { XAUUSD: { served: false } } }, NICOSIA).lines[2], "MetaTrader gave no gold history in the time allowed, so how far back it goes is not known yet.");
+  assert.equal(demoFacts({ ...probe, account: { leverage: 30, hedging: false } }, NICOSIA).lines[0], "The account says leverage 1:30. It is not a hedging account.");
   const refused = demoFacts({ at: "2026-11-16T16:40:00Z", ok: false, refused: "not_demo", why: "This is not a demo account. The Champions probe only ever looks at a demo account." }, NICOSIA);
   assert.deepEqual(refused.lines, ["This is not a demo account. The Champions probe only ever looks at a demo account."]);
   assert.equal(refused.ok, false);
