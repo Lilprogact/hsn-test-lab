@@ -1,8 +1,8 @@
-// The Connection check page's words (js/checklogic.js). No figure here is real: they are made-up reports in the
+// The Connection check page's words (js/champions/logic/check.js). No figure here is real: they are made-up reports in the
 // shape of the engine's own files. A line is a tick only when its file says so, and a cross names one thing to do.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { when, daysOld, loginLine, pricesLine, goldTo, indicatorLine, agentsLine, changedPriceFiles, verdict, demoFacts, STALE_DAYS } from "../js/checklogic.js";
+import { when, daysOld, loginLine, pricesLine, goldTo, indicatorLine, agentsLine, changedPriceFiles, verdict, demoFacts, STALE_DAYS } from "../js/champions/logic/check.js";
 
 const NICOSIA = "Asia/Nicosia";
 const NOW = Date.parse("2026-11-16T16:30:00Z");

@@ -11,7 +11,7 @@ import { FirmView } from "./firm.js";
 import { RunsView } from "./runs.js";
 import { SettingsView } from "./settings.js";
 import { SetupView } from "./setup.js";
-import { CheckView } from "./check.js";
+import { ChampionsView } from "./champions/view.js";
 import { keepView, KEEP_BLOCKS_RUNS } from "./firmlogic.js";
 
 // GitHub Pages cannot send the header that forbids framing, so the site refuses to run inside another page itself:
@@ -227,7 +227,7 @@ views.runs = new RunsView(document.getElementById("view-runs"), (rid, mode) => {
 views.settings = new SettingsView(document.getElementById("view-settings"), { onTokenSaved: async () => { state.token = await vault.getToken(); state.owner = vault.tokenMeta().owner; notice(""); await loadShared(); } });
 
 views.setup = new SetupView(document.getElementById("view-setup"));
-views.check = new CheckView(document.getElementById("view-check"));
+views.champions = new ChampionsView(document.getElementById("view-champions"));
 
 // a link straight to a page: .../hsn-test-lab/#setup opens One-time setup after the password
 if (views[location.hash.slice(1)]) current = location.hash.slice(1);

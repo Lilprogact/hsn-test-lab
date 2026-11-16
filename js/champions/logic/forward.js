@@ -1,8 +1,8 @@
-// The forward test on the Connection check page: what it says. No page code in here, so the tests can hold it to its word.
+// The forward test: what the site says about it. No page code in here, so the tests can hold it to its word.
 // Nothing is worked out or estimated: every figure is read from the score the Engine wrote (live_test/scores/card_001.json)
 // and every rule and pass mark from the frozen card (live_test/card_001.json). The test is paper only: the Engine replays
 // frozen rules on real FOREX.com prices, and no order is sent to any account.
-import { when } from "./checklogic.js";
+import { when } from "./check.js";
 
 /** The scoring job follows a price download within minutes. Prices stored for longer than this and still not scored: it did not run. */
 export const SCORE_GRACE_MS = 2 * 3600 * 1000;
@@ -12,10 +12,11 @@ const count = (n) => Number(n || 0).toLocaleString("en-GB", { maximumFractionDig
 const sentence = (s) => { const t = String(s || "").trim(); return t ? t.charAt(0).toUpperCase() + t.slice(1) + (/[.!?]$/.test(t) ? "" : ".") : ""; };
 const ASK = "Tell Claude in the Champions chat: ";
 
-/** Whole pounds with their sign: "+£325", "−£41", "£0". A figure that is missing is "no figure", never a nought. */
+/** Whole pounds with their sign: "+£325", "−£41", "£0". A figure that is missing is "no figure", never a nought.
+ *  Halves round away from nought on both sides, so a gain and a loss of the same size read the same. */
 export function pounds(v) {
   if (v === null || v === undefined || Number.isNaN(Number(v))) return "no figure";
-  const n = Math.round(Number(v));
+  const n = Math.sign(Number(v)) * Math.round(Math.abs(Number(v)));
   return `${n > 0 ? "+" : n < 0 ? "−" : ""}£${Math.abs(n).toLocaleString("en-GB")}`;
 }
 

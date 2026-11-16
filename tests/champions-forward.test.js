@@ -1,10 +1,10 @@
-// The forward test's words on the Connection check page (js/forwardlogic.js). No figure here is real: they are made-up
+// The forward test's words (js/champions/logic/forward.js). No figure here is real: they are made-up
 // scores and a made-up card in the shape of the engine's own files (live_test/). The page may only say what the score
 // holds: nothing is decided before the judging date, a missing figure is never shown as a nought, and a cross names
 // the one thing to do.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pounds, day, forwardLine, versionFigures, forwardAgents, passMarks, forwardNotes, SCORE_GRACE_MS } from "../js/forwardlogic.js";
+import { pounds, day, forwardLine, versionFigures, forwardAgents, passMarks, forwardNotes, SCORE_GRACE_MS } from "../js/champions/logic/forward.js";
 
 const NICOSIA = "Asia/Nicosia";
 const START = "2026-11-16T23:00:00Z";
@@ -47,6 +47,8 @@ test("pounds carry their sign, and a missing figure is never a nought", () => {
   assert.equal(pounds(0), "£0");
   assert.equal(pounds(-0.3), "£0", "under 50p either way is nought pounds, with no sign");
   assert.equal(pounds(12345.6), "+£12,346");
+  assert.equal(pounds(20.5), "+£21");
+  assert.equal(pounds(-20.5), "−£21", "a loss of twenty pounds fifty reads like a gain of twenty pounds fifty");
   assert.equal(pounds(null), "no figure");
   assert.equal(pounds(undefined), "no figure");
   assert.equal(pounds("x"), "no figure");

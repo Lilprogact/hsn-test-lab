@@ -1,7 +1,7 @@
-// Connection check: what each line of the page says. No page code in here, so the tests can hold it to its word.
+// Champions, the Connection check page: what each line says. No page code in here, so the tests can hold it to its word.
 // Nothing is worked out or estimated: every fact is read from a file the engine wrote (status/…) or from the Champions
 // check file (champions/status.json, written by a real run of the Engine). A line is a tick only when its file says so.
-import { trialReason } from "./dataview.js";
+import { trialReason } from "../../dataview.js";
 
 /** The price download runs every Monday. Older than this many days and it has missed a week. */
 export const STALE_DAYS = 8;
