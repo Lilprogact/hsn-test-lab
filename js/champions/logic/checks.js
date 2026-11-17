@@ -1,5 +1,6 @@
-// The five checks as lines, each {ok, title, detail, todo, button, unread?}: the FOREX.com login, the gold prices, the
-// indicator against TradingView, the five agents' copies and re-runs, and the forward test. `out` holds the files that
+// The checks as lines, each {ok, title, detail, todo, button, unread?}: the FOREX.com login, the gold prices, the
+// indicator against TradingView, the five agents' copies and re-runs, and the forward test (one line for card 1, and
+// one for card 2 once it is on file). `out` holds the files that
 // were read and `failed` the ones that could not be (with the reason). A file that could not be read is never guessed.
 import { loginLine, pricesLine, goldTo, indicatorLine, agentsLine } from "./check.js";
 import { forwardLine } from "./forward.js";
@@ -19,6 +20,12 @@ export function checkLines(out, failed, now, zone) {
     failed.agents ? unread("agents", "The agents' check file") : agentsLine(out.agents, failed.coverage ? null : out.coverage, zone),
     failed.score ? unread("score", "The forward test's score") : forwardLine(out.score, failed.card ? null : out.card, storedPrices(out, failed), now, zone),
   ];
+  if (failed.score2) lines.push(unread("score2", "The score of the forward test's card 2"));
+  else if (out.card2 || out.score2) {                              // card 2 is followed beside card 1: the same line, named as card 2's
+    const second = forwardLine(out.score2 || null, failed.card2 ? null : out.card2 || null, storedPrices(out, failed), now, zone);
+    lines.push({ ...second, title: second.title.replace(/([Tt])he forward test/, (m, t) => (t === "T" ? "Card 2 of the forward test" : "card 2 of the forward test")),
+      todo: second.todo ? second.todo.replace("the forward test", "card 2 of the forward test") : second.todo });
+  }
   const fixes = new Set();                                   // one fix is said once, on the first line it mends
   for (const l of lines) if (!l.ok && l.todo) { l.sameFixAsAbove = fixes.has(l.todo); fixes.add(l.todo); }
   return lines;

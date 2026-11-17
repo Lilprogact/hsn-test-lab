@@ -6,7 +6,7 @@ import { verdict, demoFacts, when } from "../logic/check.js";
 import { checkLines } from "../logic/checks.js";
 import { pageHead } from "./parts.js";
 
-export const needs = ["login", "cloud", "coverage", "match", "agents", "probe", "score", "card"];
+export const needs = ["login", "cloud", "coverage", "match", "agents", "probe", "score", "card", "score2", "card2"];
 
 const BUTTONS = { setup: "Open One-time setup", settings: "Open Settings" };      // the page of this site that puts a cross right
 

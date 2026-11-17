@@ -105,6 +105,20 @@ export function forwardAgents(score, card) {
   return agents;
 }
 
+/** A card's name on the page and a line about it: {label, caption}. Only what the card and its score say, and the clock for whether its start has come. */
+export function cardTab(number, card, score, now) {
+  const versions = ((card && card.versions) || (score && score.versions) || []).length;
+  const start = (card && card.start) || (score && score.start) || null;
+  const begun = (score && score.started) || (time(start) !== null && now >= time(start)) ? "started" : "starts";
+  return { label: `Card ${count(number)}`, caption: [versions ? `${count(versions)} versions` : "", start ? `${begun} ${day(start)}` : ""].filter(Boolean).join(", ") };
+}
+
+/** How long a card runs, in a sentence: card 1's twelve weeks, or a later card's own words for its months. */
+export function cardLength(card, ends) {
+  if (!card) return "";
+  return Number(card.card) === 1 || !card.months_in_words ? `Twelve weeks, in three months ending ${ends}` : sentence(card.months_in_words).replace(/\.$/, "");
+}
+
 /** The pass marks and what a pass means, in the card's own words: {marks: [three sentences], rule, pass, judged}, or null without the card. */
 export function passMarks(card) {
   const p = card && card.pass_marks;

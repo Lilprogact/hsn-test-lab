@@ -4,7 +4,7 @@
 // the one thing to do.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pounds, day, forwardLine, versionFigures, forwardAgents, passMarks, forwardNotes, SCORE_GRACE_MS } from "../js/champions/logic/forward.js";
+import { pounds, day, forwardLine, versionFigures, forwardAgents, passMarks, forwardNotes, cardTab, cardLength, SCORE_GRACE_MS } from "../js/champions/logic/forward.js";
 
 const NICOSIA = "Asia/Nicosia";
 const START = "2026-11-16T23:00:00Z";
@@ -179,4 +179,29 @@ test("the pass marks are the card's own, and the small print says what kind of t
   assert.equal(forwardNotes(score({ earlier_trades: { same: true, closed_trades_compared: 1 } }), CARD, NICOSIA)[2], "Earlier weeks are unchanged: the 1 trade that had closed by the last score is exactly as it was.");
   assert.equal(forwardNotes(score({ earlier_trades: { same: null } }), null, NICOSIA).length, 1, "nothing to compare with yet, and no card: only what kind of test it is");
   assert.equal(forwardNotes(score({ earlier_trades: { same: true, closed_trades_compared: 0 } }), null, NICOSIA).length, 1, "no trade had closed by the last score: nothing was compared, so nothing is claimed");
+});
+
+test("each card has a name and a line of its own, from the card and its score", () => {
+  const two = { card: 2, start: "2026-11-17T23:00:00Z", versions: [1, 2, 3, 4, 5],
+    months_in_words: "Three months ending on Saturdays at 00:00 GMT (12 Dec 2026, 9 Jan 2027, 6 Feb 2027): the same days as card 1's. The first is two trading days short of four weeks, because the card was frozen on the Tuesday evening." };
+  const before = Date.parse("2026-11-17T18:00:00Z"), after = Date.parse("2026-11-17T23:00:00Z");
+  assert.deepEqual(cardTab(2, two, { started: false }, before), { label: "Card 2", caption: "5 versions, starts 17 Nov 2026" });
+  assert.deepEqual(cardTab(2, two, { started: false }, after), { label: "Card 2", caption: "5 versions, started 17 Nov 2026" }, "its start has come, though the last score was made before it");
+  assert.deepEqual(cardTab(1, { start: START, versions: new Array(10).fill(0) }, { started: true }, before), { label: "Card 1", caption: "10 versions, started 16 Nov 2026" });
+  assert.deepEqual(cardTab(2, null, { start: "2026-11-17T23:00:00Z", started: true, versions: [1, 2] }, before), { label: "Card 2", caption: "2 versions, started 17 Nov 2026" }, "without the card, what the score says");
+  assert.deepEqual(cardTab(2, null, null, before), { label: "Card 2", caption: "" });
+  assert.equal(cardLength({ card: 1 }, "12 Dec 2026, 9 Jan 2027 and 6 Feb 2027"), "Twelve weeks, in three months ending 12 Dec 2026, 9 Jan 2027 and 6 Feb 2027");
+  assert.equal(cardLength(two, "x"), "Three months ending on Saturdays at 00:00 GMT (12 Dec 2026, 9 Jan 2027, 6 Feb 2027): the same days as card 1's. The first is two trading days short of four weeks, because the card was frozen on the Tuesday evening",
+    "a later card's length is said in the card's own words");
+  assert.equal(cardLength({ card: 3 }, "x"), "Twelve weeks, in three months ending x");
+  assert.equal(cardLength(null, "x"), "");
+});
+
+test("a version of card 2 says what it did on the unseen months before the test, as the card holds it", () => {
+  const card = { versions: [{ id: "A032-step4", in_words: ["Take the signals."], on_the_unseen_months_before_this_test: { small_account: { middle: -67.73, died: 644, runs: 2400 }, counted: false } }] };
+  const score = { started: false, versions: [{ id: "A032-step4", name: "Made Up Yelwen", kind: "finished version of the rounds of 17 Nov 2026 (the same rules and money plan as Made Up Kelra's)", plan_words: "17.5% of the balance on every set",
+    verdict: "running", standard_account: { trades: 0 }, small_account_all_months: null }] };
+  const v = forwardAgents(score, card)[0].versions[0];
+  assert.deepEqual([v.kind, v.figures, v.chip, v.before], ["Finished version of the rounds of 17 Nov 2026 (the same rules and money plan as Made Up Kelra's)", "No trades yet.", { text: "waiting", kind: "" },
+    "Before this test, on the unseen months: small accounts' middle run −£68, 644 of 2,400 died. It did not count."]);
 });

@@ -69,6 +69,21 @@ test("five checks, five ticks, when every file says so", () => {
   assert.deepEqual(storedPrices(FILES, {}), { to: "2026-12-07T01:16:00Z", at: "2026-12-07T01:17:00Z" });
 });
 
+test("card 2 of the forward test has a line of its own once it is on file, named as card 2's", () => {
+  const card2 = { ...CARD, card: 2, frozen_at: "2026-11-17T17:39:24Z", start: "2026-11-17T23:00:00Z" };
+  const running = checkLines({ ...FILES, card2, score2: score({ start: card2.start, weeks_complete: 3 }) }, {}, NOW, NICOSIA);
+  assert.deepEqual(running.map((l) => [l.ok, l.title]).slice(4), [[true, "The forward test is running: 3 of 12 weeks scored"], [true, "Card 2 of the forward test is running: 3 of 12 weeks scored"]]);
+  assert.deepEqual(checksSummary(running), { ok: 6, all: 6, allOk: true, text: "6 of 6", caption: "checks pass", first: "Login, prices, indicator, agents and the forward test." });
+  const unscored = checkLines({ ...FILES, card2, score2: null }, {}, NOW, NICOSIA);
+  assert.deepEqual([unscored[5].ok, unscored[5].title, unscored[5].todo], [false, "Card 2 of the forward test has not been scored yet", "Tell Claude in the Champions chat: score card 2 of the forward test."]);
+  const changed = checkLines({ ...FILES, card2, score2: score({ earlier_trades: { same: false, changed: 2, appeared: 0 } }) }, {}, NOW, NICOSIA);
+  assert.deepEqual([changed[5].ok, changed[5].title], [false, "Trades of earlier weeks have changed in card 2 of the forward test"]);
+  assert.equal(changed[4].ok, true, "card 1's line is its own");
+  const unread = checkLines({ ...FILES, card2, score2: null }, { score2: new Error("Not allowed.") }, NOW, NICOSIA);
+  assert.deepEqual([unread[5].unread, unread[5].title, unread[5].detail], [true, "The score of the forward test's card 2 could not be read", "Not allowed."]);
+  assert.equal(checkLines(FILES, {}, NOW, NICOSIA).length, 5, "with no card 2 on file there is no line for it");
+});
+
 test("a file that could not be read is a question mark with GitHub's reason, never a guess", () => {
   const failed = { login: new Error("GitHub could not be reached. Check your connection."), score: new Error("Not allowed.") };
   const lines = checkLines({ ...FILES, login: null, score: null }, failed, NOW, NICOSIA);

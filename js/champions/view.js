@@ -21,7 +21,8 @@ const FILES = {
   agents: "champions/status.json", probe: "champions/probe/forexcom_demo.json", apart: "champions/step2/take_apart.json",
   finished: "champions/step3/finished.json", rounds: "champions/step3/rounds.jsonl", byYear: "champions/step3/by_year.json",
   card: "live_test/card_001.json", score: "live_test/scores/card_001.json", trades: "live_test/scores/card_001_trades.json",
-  progress: "champions/step4/progress.json",
+  progress: "champions/step4/progress.json", unseen: "champions/step4/finished.json",
+  card2: "live_test/card_002.json", score2: "live_test/scores/card_002.json", trades2: "live_test/scores/card_002_trades.json",
 };
 const BRANCHES = { progress: ["champions-live", "main"] };    // where a file is looked for, in order: the judge's own branch first, then the saved copy
 const AGAIN_MS = 15000;                                      // a page that is watched is read again this often while it is open and in view

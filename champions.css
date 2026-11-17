@@ -274,6 +274,24 @@ html.cx-on, html.cx-on body { background: #ffffff; }
 .cx-feed-tile .cx-more .cx-feed { margin-top: 0; }
 .cx-feed-tile .cx-more .cx-feed > li:first-child { border-top: 0; padding-top: 0; }
 .cx-feed-name { font-weight: 600; }
+.cx-agent-unseen { display: flex; align-items: flex-start; gap: 10px; margin-top: 10px; }
+.cx-agent-unseen .cx-chip { flex: none; }
+.cx-agent-unseen p { min-width: 0; padding-top: 3px; font-size: 14px; line-height: 1.43; letter-spacing: -.016em; color: var(--ink-2); text-wrap: pretty; }
+.cx-tile.cx-dark .cx-agent-unseen p { color: var(--feature-ink-2); }
+.cx-tile.cx-dark .cx-chip.cx-no { background: rgba(255, 105, 97, .22); color: var(--feature-red); }
+.cx-tile.cx-dark .cx-chip.cx-ok { background: rgba(48, 209, 88, .22); color: var(--feature-green); }
+.cx-unseen-tile .cx-table-wrap { margin: 10px 0 12px; }
+.cx-unseen-tile td:first-child { min-width: 11em; }
+.cx-unseen-tile .cx-slim-title { margin-bottom: 8px; }
+.cx-unseen-tile .cx-cap + .cx-cap { margin-top: 6px; }
+.cx-why { max-width: 62em; }
+/* the forward test's cards: one is open at a time */
+.cx-card-tabs { display: flex; flex-wrap: wrap; gap: 8px; padding-top: clamp(20px, 4vw, 36px); }
+.cx-root .cx-card-tab { display: inline-flex; flex-direction: column; align-items: flex-start; min-height: 52px; padding: 8px 18px; border: 1px solid var(--hair); border-radius: 16px; background: none; color: var(--ink); text-align: left; cursor: pointer; }
+.cx-card-tab b { font-size: 17px; font-weight: 600; }
+.cx-card-tab span { font-size: 12px; letter-spacing: 0; color: var(--ink-2); }
+.cx-root .cx-card-tab[aria-selected="true"] { border-color: var(--ink); background: var(--tile); }
+.cx-forward .cx-page-head { padding-top: clamp(28px, 5vw, 56px); }
 .cx-slim-title { margin: 6px 0 14px; font-size: clamp(21px, 3vw, 28px); line-height: 1.14; letter-spacing: -.015em; font-weight: 600; text-wrap: balance; }
 .cx-slim .cx-cap { margin: 10px 0 12px; }
 .cx-root .cx-tile.cx-attention { box-shadow: inset 0 0 0 2px var(--amber-fill); }

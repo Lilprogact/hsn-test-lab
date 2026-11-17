@@ -4,11 +4,12 @@
 // is open). It only reads.
 import { h, chip, fold, svg, cx, tidy } from "../ui.js";
 import { ago, liveState, batchTrack, board, best, agentCard, sparkline, readout, roundRows, tryNotes, feedRows, measuredOn, judgedBy } from "../logic/progress.js";
+import { unseenRows, unseenHeadline, unseenFor } from "../logic/unseen.js";
 import { hero, weeksTrack } from "../logic/overview.js";
 import { checkLines, checksSummary, storedPrices } from "../logic/checks.js";
 import { bullets, dataTable, todoBox, unreadNote } from "./parts.js";
 
-export const needs = ["progress", "score", "card", "login", "cloud", "coverage", "match", "agents"];
+export const needs = ["progress", "unseen", "score", "card", "score2", "card2", "login", "cloud", "coverage", "match", "agents"];
 export const watch = ["progress"];                            // read again while the page is open
 
 const progressOf = (out, failed) => (failed.progress ? null : out.progress);
@@ -108,7 +109,12 @@ function chart(agent) {
     words);
 }
 
-function agentTile(agent, progress, now) {
+/** What a version did on the unseen months, when it has been looked at: a mark that says whether it counts, and the sums. */
+function unseenLine(look, cls = "agent-unseen") {
+  return look ? h("div", { class: cls }, chip({ kind: look.counts ? "ok" : "no", text: look.label }), h("p", {}, look.text)) : null;
+}
+
+function agentTile(agent, progress, now, finished) {
   const c = agentCard(agent, progress, now);
   const busy = ["trying", "studying", "thinking"].includes(c.state.kind);
   const rows = roundRows(agent), notes = tryNotes(agent);
@@ -120,6 +126,7 @@ function agentTile(agent, progress, now) {
     h("div", { class: "agent-money" },
       h("p", { class: "sum" }, c.money, " ", h("span", { class: "sum-cap" }, "a middle month")),
       delta(c.change, `this batch (from ${c.startText})`)),
+    unseenLine(unseenFor(finished, agent)),
     chart(agent),
     h("div", { class: "agent-tries" }, pips(c.pips, `${c.used}: ${c.keptNow} kept`), h("p", { class: "cap" }, `${c.used}, ${c.keptNow} kept.${c.looks ? ` ${c.looks}.` : ""}`)),
     h("dl", { class: "mini-facts" }, ...c.facts.map(([k, v]) => h("div", {}, h("dt", {}, k), h("dd", {}, v)))),
@@ -151,11 +158,31 @@ function feedTile(progress, now) {
     rows.length > FEED_FIRST ? fold("feed-earlier", `Earlier decisions (${rows.length - FEED_FIRST})`, h("ol", { class: "feed" }, ...rows.slice(FEED_FIRST).map(item))) : null);
 }
 
+/** The one look at the unseen months: what each finished version made where no agent had studied, beside its practice figure. */
+function unseenSection(finished, order, onCard2) {
+  const look = unseenHeadline(finished);
+  if (!look) return null;
+  const rows = unseenRows(finished, order);
+  return h("section", { class: "wrap" }, h("div", { class: `tile unseen-tile ${look.counted ? "" : "attention"}`.trim() },
+    h("p", { class: "tile-label" }, "The one look at the unseen months"),
+    h("h2", { class: "slim-title" }, look.title),
+    h("p", { class: "cap" }, "A small account's middle month, on the practice months and then on the unseen months. The last three columns are the unseen months."),
+    dataTable(["Agent", "Practice", "Unseen", "Accounts that died", "Standard account", "Counts?"],
+      rows.map((r) => [r.sameAs ? `${r.name}. ${r.sameAs}` : r.name, { text: r.practice }, { text: r.unseen, sign: r.unseenValue > 0 ? "up" : r.unseenValue < 0 ? "down" : "" }, r.died, r.standard, r.counts ? "Yes" : "No"]),
+      { numeric: [1, 2, 3] }),
+    h("p", { class: "cap" }, look.detail),
+    onCard2 ? h("p", { class: "cap" }, "All of them are on forward-test card 2, with this result beside each. New prices are the only clean test left.") : null));
+}
+
 export function render({ out, failed, now }) {
   const progress = progressOf(out, failed);
   const live = liveState(progress, now);
+  const finished = failed.unseen ? null : out.unseen;
   const card = failed.card ? null : out.card, score = failed.score ? null : out.score;
   const forward = failed.score ? { ok: false, title: "The score could not be read.", sub: failed.score.message, todo: null } : hero(out.score, card, storedPrices(out, failed), now);
+  const card2 = failed.card2 ? null : out.card2;
+  const forward2 = failed.score2 ? { ok: false, title: "Its score could not be read.", sub: failed.score2.message, todo: null }
+    : card2 || out.score2 ? hero(out.score2 || null, card2, storedPrices(out, failed), now) : null;
   const weeks = weeksTrack(score, card);
   const lines = checkLines(out, failed, now), checks = checksSummary(lines);
 
@@ -180,6 +207,7 @@ export function render({ out, failed, now }) {
           h("p", { class: "money" }, topAgent ? topAgent.text : "no figure"),
           topAgent ? h("p", { class: "money-who" }, topAgent.who) : null,
           topAgent && topAgent.change ? delta(topAgent.change, `since this batch began (the best then: ${topAgent.from.text}, ${topAgent.from.name})`) : null,
+          topAgent ? unseenLine(unseenFor(finished, progress.agents.find((a) => a.id === topAgent.id)), "agent-unseen money-unseen") : null,
           h("p", { class: "tile-foot" }, measuredOn(progress))),
         h("div", { class: "tile span-5 board-tile" },
           h("p", { class: "tile-label" }, "All five, a middle month"),
@@ -188,18 +216,23 @@ export function render({ out, failed, now }) {
             bar(r),
             r.change ? delta(r.change, "this batch") : null))),
           h("p", { class: "cap" }, "The tick on a bar is where that agent stood when this batch began."))),
-      h("section", { class: "wrap cards" }, ...progress.agents.map((a) => agentTile(a, progress, now)), feedTile(progress, now)));
+      unseenSection(finished, progress.agents.map((a) => a.id), !!card2),
+      h("section", { class: "wrap cards" }, ...progress.agents.map((a) => agentTile(a, progress, now, finished)), feedTile(progress, now)));
+  } else {
+    parts.push(unseenSection(finished, [], !!card2));
   }
 
   parts.push(
     h("section", { class: "wrap grid" },
-      h("a", { class: `tile span-6 slim ${forward.ok ? "" : "attention"}`.trim(), href: "#champions", "data-cx-go": "forward" },
+      h("a", { class: `tile span-6 slim ${forward.ok && (!forward2 || forward2.ok) ? "" : "attention"}`.trim(), href: "#champions", "data-cx-go": "forward" },
         h("p", { class: "tile-label" }, "The forward test"),
         h("p", { class: "slim-title" }, forward.title),
         h("div", { class: "weeks", role: "img", "aria-label": `${weeks.stat} ${weeks.caption}` }, ...Array.from({ length: weeks.all }, (_, i) => h("i", { class: i < weeks.done ? "done" : null }))),
         h("div", { class: "weeks-ends" }, h("span", {}, weeks.start), h("span", {}, weeks.judged)),
-        h("p", { class: "cap" }, forward.sub),
+        h("p", { class: "cap" }, forward2 ? "Card 1, the ten versions of 16 Nov: " : "", forward.sub),
         forward.todo ? todoBox(forward.todo) : null,
+        forward2 ? h("p", { class: "cap" }, `Card 2, the ${card2 && card2.versions ? card2.versions.length : ""} versions of 17 Nov: ${forward2.title} ${forward2.sub}`.replace("the  versions", "the versions")) : null,
+        forward2 && forward2.todo ? todoBox(forward2.todo) : null,
         h("span", { class: "link go" }, "Open the forward test")),
       h("a", { class: `tile span-6 slim ${checks.allOk ? "" : "attention"}`.trim(), href: "#champions", "data-cx-go": "checks" },
         h("p", { class: "tile-label" }, "Checks"),
