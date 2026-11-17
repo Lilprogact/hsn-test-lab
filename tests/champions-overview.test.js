@@ -1,8 +1,8 @@
-// The first page and the checks list (js/champions/logic/overview.js, js/logic/checks.js). Every file here is made up, in the
+// The forward test in short and the checks list (js/champions/logic/overview.js, js/champions/logic/checks.js). Every file here is made up, in the
 // shape of the engine's own. A file that could not be read is never guessed at.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { hero, weeksTrack, agentsTile, monthEnds } from "../js/champions/logic/overview.js";
+import { hero, weeksTrack, monthEnds } from "../js/champions/logic/overview.js";
 import { checkLines, checksSummary, storedPrices } from "../js/champions/logic/checks.js";
 
 const NICOSIA = "Asia/Nicosia";
@@ -48,11 +48,7 @@ test("the twelve weeks: how many are scored, never more than there are, and both
   assert.deepEqual([weeksTrack(null, null).start, weeksTrack(null, null).judged], ["", ""], "with neither file, no date is made up");
 });
 
-test("the agents' tile names them as the files do", () => {
-  assert.deepEqual(agentsTile(score(), null), { stat: "2", caption: "agents", names: "Made Up One and Made Up Two" });
-  const status = { agents: [{ role: "champion", name: "A" }, { role: "champion", name: "B" }, { role: "champion", name: "C" }, { role: "study only", name: "S" }] };
-  assert.deepEqual(agentsTile(null, status), { stat: "3", caption: "agents", names: "A, B and C" });
-  assert.deepEqual(agentsTile(null, null), { stat: "", caption: "agents", names: "" });
+test("the card's three months are named by their last days", () => {
   assert.equal(monthEnds(CARD), "12 Dec 2026, 9 Jan 2027 and 6 Feb 2027");
   assert.equal(monthEnds(null), "");
 });

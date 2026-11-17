@@ -59,3 +59,24 @@ export function chip(c) {
 export function more(label, ...children) {
   return h("details", { class: "more" }, h("summary", {}, h("span", {}, label)), h("div", { class: "more-body" }, ...children));
 }
+
+/** A fold-away part that has a name of its own, so a page that is drawn again can leave it open if it was open. */
+export function fold(key, label, ...children) {
+  const el = more(label, ...children);
+  el.setAttribute("data-cx-key", key);
+  return el;
+}
+
+/** A drawing's element (SVG), with its attributes and children. Sizes and places are attributes: no inline style. */
+export function svg(tag, attrs = {}, ...children) {
+  const el = document.createElementNS(SVG, tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === null || v === undefined || v === false) continue;
+    el.setAttribute(k, k === "class" ? cx(v) : String(v));
+  }
+  for (const c of children.flat(Infinity)) {
+    if (c === null || c === undefined || c === false) continue;
+    el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  }
+  return el;
+}

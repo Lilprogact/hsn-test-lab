@@ -28,8 +28,20 @@ test("the Champions pages only read", () => {
 
 test("the files they read are the Champions work and the Lab's own status files, by name", () => {
   const files = [...code(join("js", "champions", "view.js")).matchAll(/: "([a-z0-9_]+\/[A-Za-z0-9_./-]+\.(?:json|jsonl))"/g)].map((m) => m[1]);
-  assert.equal(files.length, 13);
+  assert.equal(files.length, 14);
   for (const f of files) assert.match(f, /^(status|champions|live_test)\//, f);
+});
+
+test("only the judge's progress file is read from its own branch, and only the Live page is read again while it is open", () => {
+  const view = code(join("js", "champions", "view.js"));
+  assert.match(view, /const BRANCHES = \{ progress: \["champions-live", "main"\] \};/, "one file, looked for on the judge's branch first and then where the rest is");
+  assert.equal((view.match(/champions-live/g) || []).length, 1);
+  assert.match(view, /progress: "champions\/step4\/progress\.json"/);
+  const watched = FILES.filter((f) => /^export const watch = /m.test(code(f)));
+  assert.deepEqual(watched, [join("js", "champions", "views", "live.js")]);
+  assert.match(code(watched[0]), /^export const watch = \["progress"\];/m, "the one file it asks for again is the progress file");
+  assert.match(view, /const AGAIN_MS = 15000;/);
+  assert.match(view, /document\.hidden/, "nothing is read while the page is out of view");
 });
 
 test("their look stays their own: every class carries the prefix, and plain elements are styled only inside the area", () => {

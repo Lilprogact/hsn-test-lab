@@ -1,5 +1,5 @@
-// The first page: one sentence for where the forward test stands, and the figures on its tiles. All of it comes from
-// the same files the other pages read. Nothing is decided here.
+// The forward test in short, for the Live page: one sentence for where it stands, and its twelve weeks as a track. All
+// of it comes from the same files the other pages read. Nothing is decided here.
 import { forwardLine, day } from "./forward.js";
 import { when } from "./check.js";
 
@@ -37,13 +37,6 @@ export function weeksTrack(score, card) {
   const judged = (score && score.judged_on_the_first_score_at_or_after) || (card && card.judged_on_the_first_score_at_or_after) || null;
   return { all, done, stat: `${count(done)} of ${count(all)}`, caption: "weeks scored", start: start ? `Starts ${day(start)}` : "", judged: judged ? `Judged from ${day(judged)}` : "",
            started: !!(score && score.started), finished: !!(score && score.judged) };
-}
-
-/** The agents' tile: how many, and their names as the score (or the check file) gives them. */
-export function agentsTile(score, status) {
-  const fromScore = [...new Set(((score && score.versions) || []).map((v) => v.name))];
-  const names = fromScore.length ? fromScore : ((status && status.agents) || []).filter((a) => a.role === "champion").map((a) => a.name);
-  return { stat: names.length ? count(names.length) : "", caption: names.length === 1 ? "agent" : "agents", names: list(names) };
 }
 
 /** The three months of the card as their end days: "12 Dec 2026, 9 Jan 2027 and 6 Feb 2027". */
