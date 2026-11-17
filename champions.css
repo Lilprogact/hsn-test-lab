@@ -245,6 +245,7 @@ html.cx-on, html.cx-on body { background: #ffffff; }
 .cx-state .cx-live-dot { width: 8px; height: 8px; margin-right: 7px; }
 .cx-state.cx-stopped { background: var(--amber-wash); color: var(--amber); }
 .cx-agent-doing { min-height: 2.95em; margin: 10px 0 12px; color: var(--ink-2); text-wrap: pretty; }
+.cx-agent-look { font-size: 14px; letter-spacing: -.016em; }
 .cx-sum { font-size: clamp(40px, 6.4vw, 56px); line-height: 1; letter-spacing: -.03em; font-weight: 600; font-variant-numeric: tabular-nums; }
 .cx-sum-cap { font-size: 17px; letter-spacing: -.01em; font-weight: 400; color: var(--ink-2); white-space: nowrap; }
 .cx-spark-box { margin-top: 16px; }
@@ -262,7 +263,7 @@ html.cx-on, html.cx-on body { background: #ffffff; }
 .cx-spark-words { display: flex; align-items: flex-start; gap: 10px; min-height: 6.1em; margin-top: 10px; }
 .cx-spark-words .cx-chip { flex: none; }
 .cx-spark-words p { min-width: 0; padding-top: 3px; font-size: 14px; line-height: 1.43; letter-spacing: -.016em; color: var(--ink-2); text-wrap: pretty; }
-.cx-agent-tries { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 4px 0 0; }
+.cx-agent-tries { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 12px 0 0; }
 .cx-mini-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; margin: 14px 0 10px; padding-top: 14px; border-top: 1px solid var(--hair); }
 .cx-mini-facts dt { font-size: 12px; letter-spacing: 0; color: var(--ink-2); }
 .cx-mini-facts dd { font-size: 19px; line-height: 1.26; letter-spacing: -.012em; font-weight: 600; font-variant-numeric: tabular-nums; }

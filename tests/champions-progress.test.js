@@ -3,7 +3,7 @@
 // figure that is missing is said to be missing.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { QUIET_MS, ago, clock, change, batchTrack, liveState, board, best, agentCard, sparkline, readout, roundRows, tryNotes, feedRows, measuredOn } from "../js/champions/logic/progress.js";
+import { QUIET_MS, ago, clock, change, batchTrack, liveState, board, best, agentCard, sparkline, readout, roundRows, tryNotes, feedRows, measuredOn, judgedBy } from "../js/champions/logic/progress.js";
 
 const NICOSIA = "Asia/Nicosia";
 const AT = "2026-11-17T11:06:10Z", NOW = Date.parse("2026-11-17T11:06:30Z");
@@ -120,6 +120,22 @@ test("the card says what an agent is busy with, in the judge's own words, and ne
   assert.equal(odd.state.kind, "resting", "a state this page does not know is never shown as work");
   const blank = card({ standing: {}, start_of_batch: {} });
   assert.deepEqual([blank.money, blank.change, blank.safe, blank.plan, blank.rules, blank.facts.map((f) => f[1])], ["no figure", null, false, "no money plan read", [], ["no figure", "no figure", "no figure", "no figure"]]);
+});
+
+test("how often an agent has studied its trades, and what it last looked at, are the judge's own count and words", () => {
+  const card = (over, whole = {}) => { const p = progress({ agents: [agent("A1", "Made Up One", over)], ...whole }); return agentCard(p.agents[0], p, whole.now || NOW, NICOSIA); };
+  const last = { what: "its trades by UK hour on the older practice months", at: "2026-11-17T11:05:50Z" };
+  const busy = card({ looks: { count: 14, last } });
+  assert.deepEqual([busy.looks, busy.lastLook], ["Studied its trades 14 times in this batch", last]);
+  assert.equal(card({ looks: { count: 1, last } }).looks, "Studied its trades once in this batch");
+  assert.deepEqual([card({}).looks, card({}).lastLook], [null, null], "a file from before the judge kept count says nothing about it");
+  assert.deepEqual([card({ looks: { count: 0, last: null } }).looks, card({ looks: { count: 0, last: null } }).lastLook], [null, null]);
+  const resting = card({ state: "resting", looks: { count: 24, last } }, { state: "resting" });
+  assert.deepEqual([resting.looks, resting.lastLook], ["Studied its trades 24 times in this batch", null], "at rest the count stays and the last look is not shown as news");
+  const stopped = card({ state: "thinking", looks: { count: 3, last } }, { now: Date.parse(AT) + QUIET_MS + 60000 });
+  assert.equal(stopped.lastLook, null);
+  assert.deepEqual(judgedBy({ judged_by: ["It must be safe.", "", 7, "It must be better."] }), ["It must be safe.", "It must be better."]);
+  assert.deepEqual([judgedBy(progress()), judgedBy(null)], [[], []], "nothing is said that the file does not say");
 });
 
 test("the line of the money: one point a round, with the judge's reason on the rounds of this step", () => {

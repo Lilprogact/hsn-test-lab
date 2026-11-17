@@ -123,11 +123,15 @@ export function agentCard(agent, progress, now, zone) {
     : "Waiting for the next batch.";
   const value = num(p.middle), start = startOf(agent);
   const runs = Number(p.runs || 0);
+  const looked = agent.looks && typeof agent.looks === "object" ? agent.looks : null;          // {count, last: {what, at}}: the judge counts every look at the trades
+  const lastLook = looked && looked.last && looked.last.what ? { what: String(looked.last.what), at: looked.last.at || null } : null;
   return {
     id: agent.id, name: agent.name, knownFor: agent.known_for || "",
     state: { kind, text: STATE[kind] }, doing,
     money: pounds(value), change: change(value, start), startText: pounds(start),
     safe: s.safe === true,
+    looks: looked && Number(looked.count) > 0 ? `Studied its trades ${Number(looked.count) === 1 ? "once" : `${count(looked.count)} times`} in this batch` : null,
+    lastLook: lastLook && ["trying", "studying", "thinking", "done"].includes(kind) ? lastLook : null,
     used: `${count(mine.length)} of ${count(each)} tries used`,
     pips: [...mine.map((t) => (t.kept ? "kept" : "dropped")), ...Array.from({ length: Math.max(0, each - mine.length) }, () => "wait")],
     keptNow: mine.filter((t) => t.kept).length,
@@ -189,6 +193,12 @@ export function feedRows(progress, now, zone) {
     name: f.name, round: `Round ${count(f.round)}`, change: sentence(f.change), kept: !!f.kept, verdict: sentence(f.verdict),
     money: pounds(num(f.middle)), at: clock(f.at, zone), ago: ago(f.at, now), iso: f.at,
   }));
+}
+
+/** How a change is judged, in the judge's own sentences (the file carries them). Nothing is said here that the file does not say. */
+export function judgedBy(progress) {
+  const lines = progress && Array.isArray(progress.judged_by) ? progress.judged_by.filter((l) => typeof l === "string" && l.trim()) : [];
+  return lines;
 }
 
 /** What the money is measured on, in one sentence, from the file's own counts. */

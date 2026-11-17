@@ -3,7 +3,7 @@
 // The page is drawn again whenever the judge's progress file changes (view.js reads it every few seconds while the page
 // is open). It only reads.
 import { h, chip, fold, svg, cx, tidy } from "../ui.js";
-import { ago, liveState, batchTrack, board, best, agentCard, sparkline, readout, roundRows, tryNotes, feedRows, measuredOn } from "../logic/progress.js";
+import { ago, liveState, batchTrack, board, best, agentCard, sparkline, readout, roundRows, tryNotes, feedRows, measuredOn, judgedBy } from "../logic/progress.js";
 import { hero, weeksTrack } from "../logic/overview.js";
 import { checkLines, checksSummary, storedPrices } from "../logic/checks.js";
 import { bullets, dataTable, todoBox, unreadNote } from "./parts.js";
@@ -116,12 +116,12 @@ function agentTile(agent, progress, now) {
     h("header", { class: "agent-head" },
       h("div", {}, h("h2", { class: "agent-name" }, c.name), c.knownFor ? h("p", { class: "cap" }, `Known for ${c.knownFor}`) : null),
       h("span", { class: `state ${c.state.kind}` }, busy ? h("span", { class: "live-dot", "aria-hidden": "true" }) : null, h("span", {}, c.state.text))),
-    h("p", { class: "agent-doing" }, c.doing),
+    h("p", { class: "agent-doing" }, c.doing, c.lastLook ? h("span", { class: "agent-look" }, " Last studied: ", c.lastLook.what, c.lastLook.at ? ", " : "", c.lastLook.at ? agoSpan(c.lastLook.at, now) : null, ".") : null),
     h("div", { class: "agent-money" },
       h("p", { class: "sum" }, c.money, " ", h("span", { class: "sum-cap" }, "a middle month")),
       delta(c.change, `this batch (from ${c.startText})`)),
     chart(agent),
-    h("div", { class: "agent-tries" }, pips(c.pips, `${c.used}: ${c.keptNow} kept`), h("p", { class: "cap" }, `${c.used}, ${c.keptNow} kept`)),
+    h("div", { class: "agent-tries" }, pips(c.pips, `${c.used}: ${c.keptNow} kept`), h("p", { class: "cap" }, `${c.used}, ${c.keptNow} kept.${c.looks ? ` ${c.looks}.` : ""}`)),
     h("dl", { class: "mini-facts" }, ...c.facts.map(([k, v]) => h("div", {}, h("dt", {}, k), h("dd", {}, v)))),
     h("p", { class: "cap" }, `Money plan: ${c.plan}. ${c.safe ? "It passes the judge's safety marks." : "It does not pass the judge's safety marks."}`),
     fold(`${c.id}-rounds`, `Every round (${rows.length - 1})`,
@@ -209,7 +209,8 @@ export function render({ out, failed, now }) {
         h("span", { class: "link go" }, "See each check"))),
     h("section", { class: "wrap small-print" },
       h("p", {}, "These are practice figures. Every sum is the Engine's own, on real FOREX.com gold prices, on the months the agents study. A version counts only when it also makes money on months it has never seen, and then in the forward test."),
-      h("p", {}, "The judge does not look at the unseen months during these rounds. An agent changes one setting of its rules at a time; it cannot change the Engine, the prices or the judge.")));
+      h("p", {}, "The judge does not look at the unseen months during these rounds. An agent changes one setting of its rules at a time; it cannot change the Engine, the prices or the judge."),
+      judgedBy(progress).length ? fold("judged-by", "How a change is judged", bullets(judgedBy(progress))) : null));
 
   const page = h("div", { class: "live" }, ...parts);
   page.setAttribute("data-cx-live", live.kind);
