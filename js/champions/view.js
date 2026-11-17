@@ -23,6 +23,7 @@ const FILES = {
   card: "live_test/card_001.json", score: "live_test/scores/card_001.json", trades: "live_test/scores/card_001_trades.json",
   progress: "champions/step4/progress.json", unseen: "champions/step4/finished.json",
   card2: "live_test/card_002.json", score2: "live_test/scores/card_002.json", trades2: "live_test/scores/card_002_trades.json",
+  edge: "champions/edge/study.json",
 };
 const BRANCHES = { progress: ["champions-live", "main"] };    // where a file is looked for, in order: the judge's own branch first, then the saved copy
 const AGAIN_MS = 15000;                                      // a page that is watched is read again this often while it is open and in view

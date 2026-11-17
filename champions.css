@@ -284,6 +284,19 @@ html.cx-on, html.cx-on body { background: #ffffff; }
 .cx-unseen-tile td:first-child { min-width: 11em; }
 .cx-unseen-tile .cx-slim-title { margin-bottom: 8px; }
 .cx-unseen-tile .cx-cap + .cx-cap { margin-top: 6px; }
+/* the edge study: what was found, beside the most that luck alone gave */
+.cx-edge-top { display: grid; gap: 24px 48px; }
+@media (min-width: 900px) {
+  .cx-edge-top { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); }
+}
+.cx-edge-tile .cx-slim-title { margin-bottom: 10px; }
+.cx-edge-tile .cx-cap + .cx-cap { margin-top: 8px; }
+.cx-edge-tile .cx-board { margin-top: 14px; }
+.cx-edge-tile .cx-board .cx-cap { margin-top: 2px; }
+.cx-bar.cx-none .cx-bar-fill { display: none; }
+.cx-edge-tile .cx-more:first-of-type { margin-top: 20px; border-top: 1px solid var(--hair); }
+.cx-edge-tile .cx-table-wrap { margin: 4px 0 10px; }
+.cx-edge-tile td:first-child { min-width: 11em; }
 .cx-why { max-width: 62em; }
 /* the forward test's cards: one is open at a time */
 .cx-card-tabs { display: flex; flex-wrap: wrap; gap: 8px; padding-top: clamp(20px, 4vw, 36px); }
