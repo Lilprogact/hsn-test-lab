@@ -317,6 +317,13 @@ html.cx-on, html.cx-on body { background: #ffffff; }
 .cx-nasdaq-proof .cx-feed-name { margin: 8px 0 8px; font-size: 19px; line-height: 1.32; letter-spacing: -.012em; color: var(--ink-2); text-wrap: pretty; }
 .cx-nasdaq-proof .cx-cap { max-width: 62em; }
 .cx-nasdaq-proof + .cx-more { margin-top: 14px; border-top: 1px solid var(--hair); }
+.cx-nasdaq-lead { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--hair); }
+.cx-nasdaq-lead > .cx-round-row { margin-top: 8px; }
+.cx-nasdaq-lead > .cx-round-row .cx-feed-name { font-size: 19px; line-height: 1.32; letter-spacing: -.012em; text-wrap: pretty; }
+.cx-root .cx-nasdaq-lead .cx-exam-kinds { margin: 12px 0 12px; }
+@media (min-width: 900px) {
+  .cx-root .cx-nasdaq-lead .cx-exam-kinds { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 .cx-nasdaq-tile th { white-space: normal; vertical-align: bottom; }
 .cx-nasdaq-tile td:first-child { min-width: 8em; }
 .cx-nasdaq-tile td:nth-child(2) { min-width: 8em; white-space: normal; }

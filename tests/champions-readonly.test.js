@@ -28,7 +28,7 @@ test("the Champions pages only read", () => {
 
 test("the files they read are the Champions work and the Lab's own status files, by name", () => {
   const files = [...code(join("js", "champions", "view.js")).matchAll(/: "([a-z0-9_]+\/[A-Za-z0-9_./-]+\.(?:json|jsonl))"/g)].map((m) => m[1]);
-  assert.equal(files.length, 22);
+  assert.equal(files.length, 23);
   for (const f of files) assert.match(f, /^(status|champions|live_test)\//, f);
 });
 

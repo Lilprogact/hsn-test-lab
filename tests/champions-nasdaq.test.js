@@ -3,7 +3,7 @@
 // decides nothing.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { nasdaqHeadline, nasdaqProof, nasdaqExamWords, nasdaqCarried, nasdaqUnit } from "../js/champions/logic/nasdaq.js";
+import { nasdaqHeadline, nasdaqProof, nasdaqExamWords, nasdaqCarried, nasdaqLong, nasdaqUnit } from "../js/champions/logic/nasdaq.js";
 import { edgeGroups, edgeHeadline, groupWords, groupWordsWith } from "../js/champions/logic/edge.js";
 
 const run = (same, of, passes, differ, marks, mine) => ({ candles_in_the_overlap: of, in_the_lab_at_the_same_time: same, the_labs_check_passes: passes,
@@ -104,4 +104,49 @@ test("the Nasdaq study's headline: how many exits make money taken together, and
   assert.equal(nasdaqHeadline(win, "Europe/London").beyond, true);
   assert.equal(nasdaqHeadline(null), null);
   assert.equal(nasdaqHeadline({}), null);
+});
+
+const side = (group, over) => ({ group, ways: ["direction"], signals: [735, 721, 794, 793, 639], average_r: [0.05, -0.02, 0.08, 0.04, 0.01], total_r: 121.5, average_r_over_all: 0.033, stretches_in_profit: 4,
+  stretches_below_all_signals: 1, judged: true, in_the_study: { signals: 4764, average_r: 0.0457, stretches_in_profit: 5 }, ...over });
+const LONG = { written_at: "2026-11-18T22:40:00Z", signals: 7209, months: { stretches: [["2020-02", "2021-02"], ["2021-04"], ["2022-06"], ["2023-08"], ["2024-10", "2025-08"]], not_read: "the 6 unseen months" },
+  design: { exit: "tp3+trail", exit_in_words: "the whole set out at target 3, following the trailing stop" },
+  all_signals: { average_r: [0.01, -0.03, 0.02, 0.01, -0.02], total_r: -14.2, average_r_over_all: -0.002, stretches_in_profit: 3, passes: false },
+  winners: { sat: 1, shuffled: { times: 200 }, kinds: [side("buys", { passes: true, shuffles_in_which_it_passes: 31 })] },
+  losers: { sat: 1, shuffled: { times: 200 }, kinds: [side("sells", { signals: [705, 687, 768, 755, 612], average_r: [-0.03, -0.04, -0.04, -0.02, -0.05], total_r: -135.7, average_r_over_all: -0.0386, stretches_in_profit: 0,
+    stretches_below_all_signals: 5, worse_again: true, shuffles_in_which_it_is_worse: 2, in_the_study: { signals: 4517, average_r: -0.0342 } })] },
+  the_gap: { buys_average_r: 0.033, sells_average_r: -0.0386, gap_r: 0.0716, shuffled: { times: 200, shuffles_with_a_gap_as_large: 3, largest_gap: 0.081, gap_at_19_in_20: 0.052 } },
+  the_answer: { called: "the lead holds", the_buys_pass: true, the_sells_are_worse: true, all_the_signals_pass: false, the_gap_is_as_large_in: 3, of_shuffles: 200, at_most_for_the_lead_to_hold: 9,
+    the_names: { "the lead holds": "the buys pass and the gap is as large in at most 9 of the 200 shuffles", "the lead is dead": "the buys do not pass" } },
+  the_buys_month_by_month: { months: 34, months_with_buys: 34, months_in_profit: 21, best_month_r: 31.4, worst_month_r: -22.06, middle_month_r: 2.6 } };
+
+test("the long side: the exam's own answer, each side's marks, the gap beside its shuffles, and the months", () => {
+  const l = nasdaqLong(LONG, "Europe/London");
+  assert.equal(l.title, "The lead holds.");
+  assert.equal(l.why, "The buys pass and the gap is as large in at most 9 of the 200 shuffles.");
+  assert.deepEqual(l.chip, { kind: "ok", text: "Holds" });
+  assert.equal(l.size, "For size: +122 R over 7 months is about +17.4 R a month, from about 526 buys a month.");
+  assert.deepEqual(l.rows[0], { who: "Buys", average: "+0.033 R over 3,682", total: "+122 R", stretches: "4 of 5", study: "+0.046 R over 4,764", mark: "Pass", luck: "31 of 200", pips: ["kept", "dropped", "kept", "kept", "kept"] });
+  assert.deepEqual(l.rows[1], { who: "Sells", average: "−0.039 R over 3,527", total: "−136 R", stretches: "0 of 5", study: "−0.034 R over 4,517", mark: "Worse again", luck: "2 of 200", pips: ["dropped", "dropped", "dropped", "dropped", "dropped"] });
+  assert.deepEqual(l.rows[2], { who: "All the signals", average: "−0.002 R over 7,209", total: "−14 R", stretches: "3 of 5", study: "", mark: "Do not pass", luck: "", pips: ["kept", "dropped", "kept", "kept", "dropped"] });
+  assert.equal(l.gap, "The buys' average less the sells' is +0.072 R a signal. With the results shuffled 200 times, the gap was as large in 3 (for the lead to hold: at most 9).");
+  assert.equal(l.months, "Month by month, the buys made money in 21 of the 34 months: +31.4 R in the best, +2.6 R in the middle one, −22.1 R in the worst.");
+  assert.ok(l.detail.startsWith("7,209 signals with no rule applied, in 7 months that had never been read (Feb 2020 to Aug 2025), the whole set out at target 3, following the trailing stop. "));
+  assert.ok(l.detail.includes("Sat once, on 18 Nov 2026, 22:40") && l.detail.endsWith("Not read: the 6 unseen months."));
+});
+
+test("a dead lead and a lead that is not shown are said as the exam names them, and nothing is said before it is sat", () => {
+  const dead = nasdaqLong({ ...LONG, winners: { ...LONG.winners, kinds: [side("buys", { passes: false, stretches_in_profit: 2, shuffles_in_which_it_passes: 60 })] },
+    the_answer: { ...LONG.the_answer, called: "the lead is dead", the_buys_pass: false } });
+  assert.deepEqual([dead.title, dead.why, dead.chip, dead.rows[0].mark], ["The lead is dead.", "The buys do not pass.", { kind: "no", text: "Dead" }, "Do not pass"]);
+  const dim = nasdaqLong({ ...LONG, the_answer: { ...LONG.the_answer, called: "the buys pass, but the direction is not shown to matter", the_names: {} } });
+  assert.deepEqual([dim.title, dim.why, dim.chip], ["The buys pass, but the direction is not shown to matter.", "", { kind: "", text: "Not shown" }]);
+  assert.equal(nasdaqLong(null), null);
+  assert.equal(nasdaqLong({ winners: { kinds: [] }, losers: { kinds: [] } }), null);
+  assert.equal(nasdaqLong({ winners: LONG.winners, losers: LONG.losers }), null, "no answer on file, nothing said");
+});
+
+test("once the months held back have been read for the lead, the study's tile no longer says they are unread", () => {
+  assert.equal(nasdaqExamWords(STUDY, true).text, "The study did not earn its exam. The months held back were then read once, for the one lead the study left: the long side, below.");
+  assert.ok(!nasdaqExamWords(STUDY, true).why.includes("Not read"));
+  assert.ok(nasdaqExamWords(STUDY).text.includes("One later idea can still be tried on them."));
 });
