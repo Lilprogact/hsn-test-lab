@@ -6,11 +6,12 @@ import { h, chip, fold, svg, cx, tidy } from "../ui.js";
 import { ago, liveState, batchTrack, board, best, agentCard, sparkline, readout, roundRows, tryNotes, feedRows, measuredOn, judgedBy } from "../logic/progress.js";
 import { unseenRows, unseenHeadline, unseenFor } from "../logic/unseen.js";
 import { edgeHeadline, edgeBars, edgeGroups, edgeExits } from "../logic/edge.js";
+import { examHeadline, examWinners, examLosers, examBase, examAfterStudy } from "../logic/exam.js";
 import { hero, weeksTrack } from "../logic/overview.js";
 import { checkLines, checksSummary, storedPrices } from "../logic/checks.js";
 import { bullets, dataTable, todoBox, unreadNote } from "./parts.js";
 
-export const needs = ["progress", "unseen", "edge", "score", "card", "score2", "card2", "login", "cloud", "coverage", "match", "agents"];
+export const needs = ["progress", "unseen", "edge", "exam", "score", "card", "score2", "card2", "login", "cloud", "coverage", "match", "agents"];
 export const watch = ["progress"];                            // read again while the page is open
 
 const progressOf = (out, failed) => (failed.progress ? null : out.progress);
@@ -184,9 +185,10 @@ function edgeBar(row) {
 }
 
 /** The edge study: the indicator's raw signals, with no rule applied, and the kinds of them that made money stretch after stretch. */
-function edgeSection(study) {
+function edgeSection(study, exam) {
   const head = edgeHeadline(study);
   if (!head) return null;
+  const since = examAfterStudy(exam);
   const bars = edgeBars(study), groups = edgeGroups(study, head.key), exits = edgeExits(study);
   return h("section", { class: "wrap" }, h("div", { class: "tile edge-tile" },
     h("div", { class: "edge-top" },
@@ -194,7 +196,7 @@ function edgeSection(study) {
         h("p", { class: "tile-label" }, "The edge study"),
         h("h2", { class: "slim-title" }, head.title),
         h("p", { class: "cap" }, head.detail),
-        h("p", { class: "cap" }, "Found on the months the agents study. The unseen months and the locked older months were not read: they are still the exam.")),
+        h("p", { class: since ? "edge-since" : "cap" }, since || "Found on the months the agents study. The unseen months and the locked older months were not read: they are still the exam.")),
       h("div", {},
         h("p", { class: "tile-label" }, "Kinds of signal that made money in every stretch, by exit"),
         h("ol", { class: "board" }, ...bars.map((r) => h("li", {},
@@ -210,11 +212,33 @@ function edgeSection(study) {
       h("p", { class: "cap" }, "Held in five or six: a kind of signal that made money in at least five of the six stretches, and over all six together."))));
 }
 
+/** The exam: the kinds of signal the study found, tried once on months the study never read. */
+function examSection(exam) {
+  const head = examHeadline(exam);
+  if (!head) return null;
+  const rows = examWinners(exam), losers = examLosers(exam), base = examBase(exam);
+  return h("section", { class: "wrap" }, h("div", { class: `tile exam-tile ${head.luck ? "attention" : ""}`.trim() },
+    h("p", { class: "tile-label" }, "The exam of the edge study"),
+    h("h2", { class: "slim-title" }, head.title),
+    head.verdict ? h("p", { class: "exam-verdict" }, head.verdict) : null,
+    h("ol", { class: "exam-kinds" }, ...rows.map((r) => h("li", {},
+      h("div", { class: "round-row" }, h("p", { class: "feed-name" }, r.group), chip(r.chip)),
+      pips(r.pips, `${r.group}: ${r.stretches}`),
+      h("p", { class: "cap" }, `${r.text}. ${r.stretches}. ${r.study ? `${r.study}. ` : ""}${r.luck}.`)))),
+    h("p", { class: "cap" }, "One mark for each stretch of the exam months, in order of time: a green mark is a stretch in which that kind made money, a dash one in which it lost."),
+    base ? h("p", { class: "cap" }, base) : null,
+    h("p", { class: "cap" }, head.detail),
+    losers && losers.rows.length ? fold("exam-losers", `The kinds that lost every time in the study (${losers.rows.length})`,
+      h("p", { class: "cap" }, `${losers.title} ${losers.verdict}`.trim()),
+      dataTable(["Kind of signal", "Signals", "Average", "Stretches below the rest", "Worse again?", "By luck in"],
+        losers.rows.map((r) => [r.group, r.signals, r.average, r.below, r.again, r.luck]), { numeric: [1, 2] })) : null));
+}
+
 export function render({ out, failed, now }) {
   const progress = progressOf(out, failed);
   const live = liveState(progress, now);
   const finished = failed.unseen ? null : out.unseen;
-  const study = failed.edge ? null : out.edge;
+  const study = failed.edge ? null : out.edge, exam = failed.exam ? null : out.exam;
   const card = failed.card ? null : out.card, score = failed.score ? null : out.score;
   const forward = failed.score ? { ok: false, title: "The score could not be read.", sub: failed.score.message, todo: null } : hero(out.score, card, storedPrices(out, failed), now);
   const card2 = failed.card2 ? null : out.card2;
@@ -254,10 +278,11 @@ export function render({ out, failed, now }) {
             r.change ? delta(r.change, "this batch") : null))),
           h("p", { class: "cap" }, "The tick on a bar is where that agent stood when this batch began."))),
       unseenSection(finished, progress.agents.map((a) => a.id), !!card2),
-      edgeSection(study),
+      edgeSection(study, exam),
+      examSection(exam),
       h("section", { class: "wrap cards" }, ...progress.agents.map((a) => agentTile(a, progress, now, finished)), feedTile(progress, now)));
   } else {
-    parts.push(unseenSection(finished, [], !!card2), edgeSection(study));
+    parts.push(unseenSection(finished, [], !!card2), edgeSection(study, exam), examSection(exam));
   }
 
   parts.push(

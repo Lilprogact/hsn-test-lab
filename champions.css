@@ -290,6 +290,7 @@ html.cx-on, html.cx-on body { background: #ffffff; }
   .cx-edge-top { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); }
 }
 .cx-edge-tile .cx-slim-title { margin-bottom: 10px; }
+.cx-edge-since { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--hair); font-weight: 600; text-wrap: pretty; }
 .cx-edge-tile .cx-cap + .cx-cap { margin-top: 8px; }
 .cx-edge-tile .cx-board { margin-top: 14px; }
 .cx-edge-tile .cx-board .cx-cap { margin-top: 2px; }
@@ -297,6 +298,20 @@ html.cx-on, html.cx-on body { background: #ffffff; }
 .cx-edge-tile .cx-more:first-of-type { margin-top: 20px; border-top: 1px solid var(--hair); }
 .cx-edge-tile .cx-table-wrap { margin: 4px 0 10px; }
 .cx-edge-tile td:first-child { min-width: 11em; }
+/* the exam: each kind the study found, with a mark for every stretch of the months held back */
+.cx-exam-tile .cx-slim-title { margin-bottom: 6px; }
+.cx-exam-verdict { margin-bottom: 4px; font-size: 19px; line-height: 1.32; letter-spacing: -.012em; font-weight: 600; color: var(--ink-2); text-wrap: pretty; }
+.cx-root .cx-exam-kinds { display: grid; gap: 0 48px; margin: 14px 0 14px; padding: 0; list-style: none; border-bottom: 1px solid var(--hair); }
+@media (min-width: 900px) {
+  .cx-root .cx-exam-kinds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.cx-exam-kinds > li { padding: 14px 0 12px; border-top: 1px solid var(--hair); }
+.cx-exam-kinds .cx-pips { margin: 8px 0 8px; }
+.cx-exam-kinds .cx-pips i { width: 28px; }
+.cx-exam-tile .cx-cap + .cx-cap { margin-top: 8px; }
+.cx-exam-tile .cx-more:first-of-type { margin-top: 16px; border-top: 1px solid var(--hair); }
+.cx-exam-tile .cx-table-wrap { margin: 8px 0 10px; }
+.cx-exam-tile td:first-child { min-width: 13em; }
 .cx-why { max-width: 62em; }
 /* the forward test's cards: one is open at a time */
 .cx-card-tabs { display: flex; flex-wrap: wrap; gap: 8px; padding-top: clamp(20px, 4vw, 36px); }
