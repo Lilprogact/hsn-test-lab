@@ -26,12 +26,17 @@ export function monthWords(ym) {
 }
 
 // A band of confidence or of stop size is only a pair of numbers in the study's own label: the page says which it is.
-const SAY = { confidence: (label) => `confidence ${label}`, stop: (label) => `stop ${label} pips` };
+const SAY = { confidence: (label) => `confidence ${label}`, stop: (label, unit) => `stop ${label} ${unit}` };
+
+/** A group in the page's words, with the unit a stop size is in ("pips" on gold, "points" on Nasdaq). */
+export function groupWordsWith(group, unit) {
+  const label = String((group && group.group) || ""), parts = label.split(", "), ways = (group && group.ways) || [];
+  return cap(parts.length === ways.length ? parts.map((part, i) => (SAY[ways[i]] ? SAY[ways[i]](part, unit) : part)).join(", ") : label);
+}
 
 /** A group in the page's words: the study's own label, with the bands named ("0.8 to 0.9" is "confidence 0.8 to 0.9"). */
 export function groupWords(group) {
-  const label = String((group && group.group) || ""), parts = label.split(", "), ways = (group && group.ways) || [];
-  return cap(parts.length === ways.length ? parts.map((part, i) => (SAY[ways[i]] ? SAY[ways[i]](part) : part)).join(", ") : label);
+  return groupWordsWith(group, "pips");
 }
 
 const exitsOf = (study) => (study && study.exits && typeof study.exits === "object" ? Object.entries(study.exits) : []);
@@ -69,17 +74,17 @@ export function edgeExits(study) {
 }
 
 /** The groups that made money in every stretch under one exit: the group, its signals, its average over all of them, and its worst stretch. */
-export function edgeGroups(study, key) {
+export function edgeGroups(study, key, unit = "pips") {
   const e = study && study.exits && study.exits[key];
   return ((e && e.holds_everywhere) || []).map((g) => {
     const signals = (g.signals || []).reduce((a, b) => a + Number(b || 0), 0);
-    return { group: groupWords(g), signals: count(signals), average: inR(signals ? Number(g.total_r) / signals : null), worst: inR(g.worst_stretch_average_r, 3),
+    return { group: groupWordsWith(g, unit), signals: count(signals), average: inR(signals ? Number(g.total_r) / signals : null), worst: inR(g.worst_stretch_average_r, 3),
       stretches: (g.average_r || []).map((v) => inR(v)) };
   });
 }
 
 /** The study in two sentences, and when it was made: {title, detail, key, exit, beyond}, or null when there is no study. */
-export function edgeHeadline(study, zone) {
+export function edgeHeadline(study, zone, months = "months the agents study") {
   const all = exitsOf(study);
   if (!all.length) return null;
   const key = clearestExit(study), e = study.exits[key], s = e.shuffled || {}, n = Number(e.everywhere || 0), luck = luckOf(e), beyond = luck !== null && n > luck;
@@ -89,7 +94,7 @@ export function edgeHeadline(study, zone) {
   const kinds = `kind${n > 1 ? "s" : ""} of signal made money in every stretch`;
   const title = `${together} ${n === 0 ? `No ${kinds}.` : beyond ? `${cap(word(n))} ${kinds}.` : `${cap(word(n))} ${kinds}, which is no more than luck gives.`}`;
   const runs = ((study.months || {}).stretches || []), first = runs.length ? runs[0][0] : null, last = runs.length ? runs[runs.length - 1].slice(-1)[0] : null;
-  const detail = `${count(study.signals)} signals with no rule applied, grouped ${count(study.families)} ways, in ${runs.length ? `${word(runs.length)} stretches of months the agents study (${monthWords(first)} to ${monthWords(last)})` : "stretches of the months the agents study"}. `
+  const detail = `${count(study.signals)} signals with no rule applied, grouped ${count(study.families)} ways, in ${runs.length ? `${word(runs.length)} stretches of ${months} (${monthWords(first)} to ${monthWords(last)})` : `stretches of the ${months}`}. `
     + (n && luck !== null ? `With ${e.exit || exitName(key, e).toLowerCase()}, ${count(n)} group${n === 1 ? "" : "s"} made money in every stretch; luck alone gave at most ${count(luck)} in ${count(s.times)} shuffles. ` : "")
     + `Made on ${study.written_at ? when(study.written_at, zone) : "a day that is not on file"}.`;
   return { title, detail, key, exit: exitName(key, e), beyond };

@@ -312,6 +312,14 @@ html.cx-on, html.cx-on body { background: #ffffff; }
 .cx-exam-tile .cx-more:first-of-type { margin-top: 16px; border-top: 1px solid var(--hair); }
 .cx-exam-tile .cx-table-wrap { margin: 8px 0 10px; }
 .cx-exam-tile td:first-child { min-width: 13em; }
+/* Nasdaq: the edge study's tile again, with the copy held against TradingView under it */
+.cx-nasdaq-proof { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--hair); }
+.cx-nasdaq-proof .cx-feed-name { margin: 8px 0 8px; font-size: 19px; line-height: 1.32; letter-spacing: -.012em; color: var(--ink-2); text-wrap: pretty; }
+.cx-nasdaq-proof .cx-cap { max-width: 62em; }
+.cx-nasdaq-proof + .cx-more { margin-top: 14px; border-top: 1px solid var(--hair); }
+.cx-nasdaq-tile th { white-space: normal; vertical-align: bottom; }
+.cx-nasdaq-tile td:first-child { min-width: 8em; }
+.cx-nasdaq-tile td:nth-child(2) { min-width: 8em; white-space: normal; }
 .cx-why { max-width: 62em; }
 /* the forward test's cards: one is open at a time */
 .cx-card-tabs { display: flex; flex-wrap: wrap; gap: 8px; padding-top: clamp(20px, 4vw, 36px); }

@@ -7,11 +7,12 @@ import { ago, liveState, batchTrack, board, best, agentCard, sparkline, readout,
 import { unseenRows, unseenHeadline, unseenFor } from "../logic/unseen.js";
 import { edgeHeadline, edgeBars, edgeGroups, edgeExits } from "../logic/edge.js";
 import { examHeadline, examWinners, examLosers, examBase, examAfterStudy } from "../logic/exam.js";
+import { nasdaqHeadline, nasdaqProof, nasdaqExamWords, nasdaqCarried, nasdaqUnit } from "../logic/nasdaq.js";
 import { hero, weeksTrack } from "../logic/overview.js";
 import { checkLines, checksSummary, storedPrices } from "../logic/checks.js";
 import { bullets, dataTable, todoBox, unreadNote } from "./parts.js";
 
-export const needs = ["progress", "unseen", "edge", "exam", "score", "card", "score2", "card2", "login", "cloud", "coverage", "match", "agents"];
+export const needs = ["progress", "unseen", "edge", "exam", "nasdaq", "nasdaqProof", "score", "card", "score2", "card2", "login", "cloud", "coverage", "match", "agents"];
 export const watch = ["progress"];                            // read again while the page is open
 
 const progressOf = (out, failed) => (failed.progress ? null : out.progress);
@@ -193,7 +194,7 @@ function edgeSection(study, exam) {
   return h("section", { class: "wrap" }, h("div", { class: "tile edge-tile" },
     h("div", { class: "edge-top" },
       h("div", {},
-        h("p", { class: "tile-label" }, "The edge study"),
+        h("p", { class: "tile-label" }, "Gold: the edge study"),
         h("h2", { class: "slim-title" }, head.title),
         h("p", { class: "cap" }, head.detail),
         h("p", { class: since ? "edge-since" : "cap" }, since || "Found on the months the agents study. The unseen months and the locked older months were not read: they are still the exam.")),
@@ -218,7 +219,7 @@ function examSection(exam) {
   if (!head) return null;
   const rows = examWinners(exam), losers = examLosers(exam), base = examBase(exam);
   return h("section", { class: "wrap" }, h("div", { class: `tile exam-tile ${head.luck ? "attention" : ""}`.trim() },
-    h("p", { class: "tile-label" }, "The exam of the edge study"),
+    h("p", { class: "tile-label" }, "Gold: the exam of the edge study"),
     h("h2", { class: "slim-title" }, head.title),
     head.verdict ? h("p", { class: "exam-verdict" }, head.verdict) : null,
     h("ol", { class: "exam-kinds" }, ...rows.map((r) => h("li", {},
@@ -234,11 +235,61 @@ function examSection(exam) {
         losers.rows.map((r) => [r.group, r.signals, r.average, r.below, r.again, r.luck]), { numeric: [1, 2] })) : null));
 }
 
+/** Nasdaq: the same study on the indicator's Nasdaq signals, what gold's exam found tried there, and the copy held against TradingView. */
+function nasdaqSection(study, counting) {
+  const head = nasdaqHeadline(study), proof = nasdaqProof(counting);
+  if (!head && !proof) return null;
+  const parts = [];
+  if (head) {
+    const bars = edgeBars(study), groups = edgeGroups(study, head.key, nasdaqUnit), exits = edgeExits(study), exam = nasdaqExamWords(study), carried = nasdaqCarried(study);
+    parts.push(
+      h("div", { class: "edge-top" },
+        h("div", {},
+          h("p", { class: "tile-label" }, "Nasdaq: the edge study"),
+          h("h2", { class: "slim-title" }, head.title),
+          h("p", { class: "cap" }, head.detail),
+          exam ? h("p", { class: "edge-since" }, exam.text) : null,
+          exam && exam.why ? h("p", { class: "cap" }, exam.why) : null),
+        h("div", {},
+          h("p", { class: "tile-label" }, "Kinds of signal that made money in every stretch, by exit"),
+          h("ol", { class: "board" }, ...bars.map((r) => h("li", {},
+            h("div", { class: "board-line" }, h("span", { class: "board-name" }, r.name), h("span", { class: "board-sum" }, r.text)),
+            edgeBar(r),
+            h("p", { class: "cap" }, r.words)))),
+          h("p", { class: "cap" }, "The tick on a bar is the most that luck alone gave: the same count with the results shuffled among the signals."))),
+      carried ? fold("nasdaq-carried", `What gold's exam left standing, tried on Nasdaq (${carried.rows.length})`,
+        h("p", { class: "cap" }, `${carried.title} ${carried.verdict}`.trim()),
+        dataTable(["Kind of signal", "On gold's exam", "On Nasdaq", "Stretches", "Again?", "By luck"],
+          carried.rows.map((r) => [r.group, `${r.was}: ${r.gold}`, r.average, r.stretches, r.again, r.luck])),
+        h("p", { class: "cap" }, "These kinds were chosen on gold, so no Nasdaq month had a say in choosing them. Below: stretches in which a kind did worse than all the signals together. "
+          + "By luck: the shuffles in which the same mark came up by chance. R is a signal's result against what it risked.")) : null,
+      groups.length ? fold("nasdaq-groups", `The kinds that held with ${head.exit.toLowerCase()} (${groups.length})${head.beyond ? "" : ": no more than luck gives"}`,
+        dataTable(["Kind of signal", "Signals", "Average a signal", "Worst stretch"], groups.map((g) => [g.group, g.signals, g.average, g.worst]), { numeric: [1, 2, 3] })) : null,
+      fold("nasdaq-exits", "Every exit, with the check on luck",
+        dataTable(["Exit", "All signals together", "Held in every stretch", "Held in five or six"], exits.map((e) => [e.exit, e.together, e.everywhere, e.mostly]))));
+  }
+  if (proof) {
+    parts.push(
+      h("div", { class: "nasdaq-proof" },
+        h("p", { class: "tile-label" }, "Nasdaq: the copy against your TradingView chart"),
+        h("p", { class: "feed-name" }, proof.title),
+        proof.fault ? h("p", { class: "cap" }, proof.fault) : null,
+        h("p", { class: "cap" }, proof.detail)),
+      fold("nasdaq-proof", `File by file (${proof.rows.length})`,
+        dataTable(["File", "Candles at the same time", "Marks, its own candles", "Marks, the Lab's candles", "The Lab's check"],
+          proof.rows.map((r) => [r.chart, r.other ? `${r.asLab} (${r.other})` : r.asLab, r.marks, r.mine, r.check])),
+        ...proof.notes.map((line) => h("p", { class: "cap" }, line)),
+        h("p", { class: "cap" }, "Candles at the same time: your file's candles that the Lab has a candle for at the same minute. Marks: Buy and Sell marks on the same candle, of those TradingView shows.")));
+  }
+  return h("section", { class: "wrap" }, h("div", { class: "tile edge-tile nasdaq-tile" }, ...parts));
+}
+
 export function render({ out, failed, now }) {
   const progress = progressOf(out, failed);
   const live = liveState(progress, now);
   const finished = failed.unseen ? null : out.unseen;
   const study = failed.edge ? null : out.edge, exam = failed.exam ? null : out.exam;
+  const nasdaq = failed.nasdaq ? null : out.nasdaq, nasdaqFiles = failed.nasdaqProof ? null : out.nasdaqProof;
   const card = failed.card ? null : out.card, score = failed.score ? null : out.score;
   const forward = failed.score ? { ok: false, title: "The score could not be read.", sub: failed.score.message, todo: null } : hero(out.score, card, storedPrices(out, failed), now);
   const card2 = failed.card2 ? null : out.card2;
@@ -280,9 +331,10 @@ export function render({ out, failed, now }) {
       unseenSection(finished, progress.agents.map((a) => a.id), !!card2),
       edgeSection(study, exam),
       examSection(exam),
+      nasdaqSection(nasdaq, nasdaqFiles),
       h("section", { class: "wrap cards" }, ...progress.agents.map((a) => agentTile(a, progress, now, finished)), feedTile(progress, now)));
   } else {
-    parts.push(unseenSection(finished, [], !!card2), edgeSection(study, exam), examSection(exam));
+    parts.push(unseenSection(finished, [], !!card2), edgeSection(study, exam), examSection(exam), nasdaqSection(nasdaq, nasdaqFiles));
   }
 
   parts.push(
