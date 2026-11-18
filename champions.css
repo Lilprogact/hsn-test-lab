@@ -324,6 +324,9 @@ html.cx-on, html.cx-on body { background: #ffffff; }
 @media (min-width: 900px) {
   .cx-root .cx-nasdaq-lead .cx-exam-kinds { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+.cx-nasdaq-money { margin: 10px 0 8px; font-size: clamp(40px, 7vw, 64px); line-height: 1; letter-spacing: -.035em; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cx-nasdaq-money .cx-sum-cap { white-space: normal; }
+.cx-nasdaq-version .cx-more { margin-top: 12px; }
 .cx-nasdaq-tile th { white-space: normal; vertical-align: bottom; }
 .cx-nasdaq-tile td:first-child { min-width: 8em; }
 .cx-nasdaq-tile td:nth-child(2) { min-width: 8em; white-space: normal; }

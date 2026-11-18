@@ -7,12 +7,12 @@ import { ago, liveState, batchTrack, board, best, agentCard, sparkline, readout,
 import { unseenRows, unseenHeadline, unseenFor } from "../logic/unseen.js";
 import { edgeHeadline, edgeBars, edgeGroups, edgeExits } from "../logic/edge.js";
 import { examHeadline, examWinners, examLosers, examBase, examAfterStudy } from "../logic/exam.js";
-import { nasdaqHeadline, nasdaqProof, nasdaqExamWords, nasdaqCarried, nasdaqLong, nasdaqUnit } from "../logic/nasdaq.js";
+import { nasdaqHeadline, nasdaqProof, nasdaqExamWords, nasdaqCarried, nasdaqLong, nasdaqVersion, nasdaqUnit } from "../logic/nasdaq.js";
 import { hero, weeksTrack } from "../logic/overview.js";
 import { checkLines, checksSummary, storedPrices } from "../logic/checks.js";
 import { bullets, dataTable, todoBox, unreadNote } from "./parts.js";
 
-export const needs = ["progress", "unseen", "edge", "exam", "nasdaq", "nasdaqLong", "nasdaqProof", "score", "card", "score2", "card2", "login", "cloud", "coverage", "match", "agents"];
+export const needs = ["progress", "unseen", "edge", "exam", "nasdaq", "nasdaqLong", "nasdaqVersion", "nasdaqProof", "score", "card", "score2", "card2", "login", "cloud", "coverage", "match", "agents"];
 export const watch = ["progress"];                            // read again while the page is open
 
 const progressOf = (out, failed) => (failed.progress ? null : out.progress);
@@ -236,8 +236,8 @@ function examSection(exam) {
 }
 
 /** Nasdaq: the same study on the indicator's Nasdaq signals, what gold's exam found tried there, and the copy held against TradingView. */
-function nasdaqSection(study, counting, longSide) {
-  const head = nasdaqHeadline(study), proof = nasdaqProof(counting), lead = nasdaqLong(longSide);
+function nasdaqSection(study, counting, longSide, built) {
+  const head = nasdaqHeadline(study), proof = nasdaqProof(counting), lead = nasdaqLong(longSide), version = nasdaqVersion(built);
   if (!head && !proof) return null;
   const parts = [];
   if (head) {
@@ -270,6 +270,22 @@ function nasdaqSection(study, counting, longSide) {
         lead.gap ? h("p", { class: "cap" }, lead.gap) : null,
         lead.months ? h("p", { class: "cap" }, lead.months) : null,
         h("p", { class: "cap" }, lead.detail)) : null,
+      version ? h("div", { class: "nasdaq-lead nasdaq-version" },
+        h("p", { class: "tile-label" }, "Nasdaq: buys only, on a small account of £100 to £500"),
+        h("div", { class: "round-row" }, h("p", { class: "feed-name" }, version.title), chip(version.chip)),
+        h("p", { class: "nasdaq-money" }, version.money, h("span", { class: "sum-cap" }, " a middle month, on the unseen months")),
+        h("p", { class: "cap" }, version.unseen),
+        ...version.reasons.map((line) => h("p", { class: "edge-since" }, line)),
+        version.standard ? h("p", { class: "cap" }, version.standard) : null,
+        h("p", { class: "cap" }, `${version.plan} ${version.safe}`),
+        version.limit ? h("p", { class: "cap" }, version.limit) : null,
+        h("p", { class: "cap" }, version.study),
+        version.record ? h("p", { class: "cap" }, version.record) : null,
+        h("p", { class: "cap" }, version.detail),
+        version.rows.length ? fold("nasdaq-plans", `Every money plan tried, on the study months (${version.rows.length})`,
+          dataTable(["A set risks", "Practice: middle run", "Practice: died", "Older: middle run", "Older: died", "Could not trade"],
+            version.rows.map((r) => [r.plan, r.practice, r.practiceDied, r.older, r.olderDied, r.idle]), { numeric: [1, 2, 3, 4, 5] }),
+          h("p", { class: "cap" }, "Safe: by Step 3's own rule. A plan too small to open the broker's smallest position is safe only because it does not trade.")) : null) : null,
       carried ? fold("nasdaq-carried", `What gold's exam left standing, tried on Nasdaq (${carried.rows.length})`,
         h("p", { class: "cap" }, `${carried.title} ${carried.verdict}`.trim()),
         dataTable(["Kind of signal", "On gold's exam", "On Nasdaq", "Stretches", "Again?", "By luck"],
@@ -302,7 +318,8 @@ export function render({ out, failed, now }) {
   const live = liveState(progress, now);
   const finished = failed.unseen ? null : out.unseen;
   const study = failed.edge ? null : out.edge, exam = failed.exam ? null : out.exam;
-  const nasdaq = failed.nasdaq ? null : out.nasdaq, nasdaqFiles = failed.nasdaqProof ? null : out.nasdaqProof, nasdaqLead = failed.nasdaqLong ? null : out.nasdaqLong;
+  const nasdaq = failed.nasdaq ? null : out.nasdaq, nasdaqFiles = failed.nasdaqProof ? null : out.nasdaqProof, nasdaqLead = failed.nasdaqLong ? null : out.nasdaqLong,
+    nasdaqBuilt = failed.nasdaqVersion ? null : out.nasdaqVersion;
   const card = failed.card ? null : out.card, score = failed.score ? null : out.score;
   const forward = failed.score ? { ok: false, title: "The score could not be read.", sub: failed.score.message, todo: null } : hero(out.score, card, storedPrices(out, failed), now);
   const card2 = failed.card2 ? null : out.card2;
@@ -344,10 +361,10 @@ export function render({ out, failed, now }) {
       unseenSection(finished, progress.agents.map((a) => a.id), !!card2),
       edgeSection(study, exam),
       examSection(exam),
-      nasdaqSection(nasdaq, nasdaqFiles, nasdaqLead),
+      nasdaqSection(nasdaq, nasdaqFiles, nasdaqLead, nasdaqBuilt),
       h("section", { class: "wrap cards" }, ...progress.agents.map((a) => agentTile(a, progress, now, finished)), feedTile(progress, now)));
   } else {
-    parts.push(unseenSection(finished, [], !!card2), edgeSection(study, exam), examSection(exam), nasdaqSection(nasdaq, nasdaqFiles, nasdaqLead));
+    parts.push(unseenSection(finished, [], !!card2), edgeSection(study, exam), examSection(exam), nasdaqSection(nasdaq, nasdaqFiles, nasdaqLead, nasdaqBuilt));
   }
 
   parts.push(

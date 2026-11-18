@@ -130,3 +130,35 @@ export function nasdaqCarried(study) {
   const title = `${held === 0 ? "None" : cap(word(held))} of the ${word(rows.length)} things gold's exam left standing ${held === 1 ? "shows" : "show"} again on Nasdaq.`;
   return { title, verdict: c.winners.beside_the_shuffles && c.winners.beside_the_shuffles === c.losers.beside_the_shuffles ? `That is ${c.winners.beside_the_shuffles}.` : "", rows };
 }
+
+const pounds = (v) => (num(v) === null ? "no figure" : `${Number(v) < 0 ? "−" : Number(v) > 0 ? "+" : ""}£${Math.abs(Number(v)).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+const runWords = (x) => (!x ? "not played" : `middle run ${pounds(x.middle)}, average ${pounds(x.average)}, best ${pounds(x.best)}, worst ${pounds(x.worst)}; ${count(x.died)} of ${count(x.runs)} accounts died`
+  + `${Number(x.could_not_trade) ? `; ${count(x.could_not_trade)} could not open a single set` : ""}`);
+
+/** The buys-only Nasdaq version on a small account, and its one look at the unseen months. {title, chip, money, unseen,
+ *  standard, plan, safe, study, rows, record, detail}, or null when it has not been built. Every figure is the Engine's own. */
+export function nasdaqVersion(v, zone) {
+  const c = v && v.chosen;
+  if (!c || typeof v.counts !== "boolean") return null;
+  const u = v.unseen || null, std = v.standard_unseen || {}, ch = v.the_challenge || {}, run = c.losing_run || {};
+  const why = (v.not_safe_because || []).join("; ");
+  const idle = (t) => Number((t.practice || {}).could_not_trade || 0) + Number((t.older || {}).could_not_trade || 0);
+  const trades = (v.plans_tried || []).find((t) => idle(t) === 0);
+  const reasons = [];
+  if (u && Number(u.runs) && Number(u.could_not_trade) === Number(u.runs)) reasons.push(`Not one of the ${count(u.runs)} accounts could open a single set there: with this plan the smallest Nasdaq position the broker allows risks more than the plan lets a set risk.`);
+  if (trades) reasons.push(`At ${String(trades.plan || "").replace(" on every set", "")} a set, every account could trade: ${count((trades.practice || {}).died)} of ${count((trades.practice || {}).runs)} died on the practice months, and the middle run was ${pounds((trades.practice || {}).middle)}.`);
+  return { title: v.counts ? "The buys-only version counts." : "The buys-only version does not count.", chip: v.counts ? { kind: "ok", text: "Counts" } : { kind: "no", text: "Does not count" },
+    money: u ? pounds(u.middle) : "no figure",
+    unseen: `On the ${count(((v.months || {}).unseen || []).length)} unseen months, a small account: ${runWords(u)}.`,
+    standard: num(std.pnl_gbp) === null ? "" : `The Engine's standard account on those months: ${count(std.trades)} trades, ${pounds(std.pnl_gbp)}.`,
+    plan: `The plan that stands: ${c.plan_words || "not on file"}.`,
+    safe: v.safe_on_the_study_months ? "Safe on the study months." : `Not safe on the study months: ${why || "no reason on file"}.`, reasons,
+    study: `Practice months: ${runWords(c.practice)}. Older practice months: ${runWords(c.older)}.`,
+    limit: num(run.deepest_r) === null ? "" : `Its deepest losing run within one study month is ${Number(run.deepest_r).toFixed(1)} R (${monthWords(run.month)}), so a set may risk at most ${Number(run.largest_percent_plan).toFixed(2)}% of the balance.`,
+    rows: (v.plans_tried || []).map((t) => ({ plan: `${String(t.plan || "").replace(" of the balance on every set", "").replace(/ \(.*$/, "")}${t.safe ? " (safe)" : ""}`, practice: pounds((t.practice || {}).middle),
+      practiceDied: `${count((t.practice || {}).died)} of ${count((t.practice || {}).runs)}`, older: pounds((t.older || {}).middle), olderDied: `${count((t.older || {}).died)} of ${count((t.older || {}).runs)}`,
+      idle: count(idle(t)) })),
+    record: v.the_exam_months_for_the_record ? `For the record, with no say in the answer, the months the lead was tried on: ${runWords(v.the_exam_months_for_the_record.small_account)}.` : "",
+    detail: `${count(ch.runs_in_every_month)} runs started in every month, starting balances from £${count(ch.start_from_gbp)} to £${count(ch.start_to_gbp)}, FOREX.com's real sizes and costs; an account that falls to half is dead. `
+      + `It counts only if ${v.counts_if || "it is safe and makes money on the unseen months"}. Built and looked at once, on ${v.written_at ? when(v.written_at, zone) : "a day that is not on file"}.` };
+}

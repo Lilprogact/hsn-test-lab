@@ -3,7 +3,7 @@
 // decides nothing.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { nasdaqHeadline, nasdaqProof, nasdaqExamWords, nasdaqCarried, nasdaqLong, nasdaqUnit } from "../js/champions/logic/nasdaq.js";
+import { nasdaqHeadline, nasdaqProof, nasdaqExamWords, nasdaqCarried, nasdaqLong, nasdaqVersion, nasdaqUnit } from "../js/champions/logic/nasdaq.js";
 import { edgeGroups, edgeHeadline, groupWords, groupWordsWith } from "../js/champions/logic/edge.js";
 
 const run = (same, of, passes, differ, marks, mine) => ({ candles_in_the_overlap: of, in_the_lab_at_the_same_time: same, the_labs_check_passes: passes,
@@ -149,4 +149,43 @@ test("once the months held back have been read for the lead, the study's tile no
   assert.equal(nasdaqExamWords(STUDY, true).text, "The study did not earn its exam. The months held back were then read once, for the one lead the study left: the long side, below.");
   assert.ok(!nasdaqExamWords(STUDY, true).why.includes("Not read"));
   assert.ok(nasdaqExamWords(STUDY).text.includes("One later idea can still be tried on them."));
+});
+
+const played = (middle, over = {}) => ({ middle, average: middle + 1.5, best: 240.1, worst: -210.55, died: 96, runs: 2400, could_not_trade: 310, sets: 9000, too_small: 4000, ...over });
+const VERSION = { written_at: "2026-11-18T23:10:00Z", counts: false, counts_if: "it is safe on the study months and it makes money on the unseen months",
+  months: { practice: ["2025-10"], older_practice: ["2020-01"], unseen: ["2025-11", "2026-01", "2026-04", "2026-06", "2026-08", "2026-10"], exam: ["2020-02"] },
+  the_challenge: { start_from_gbp: 100, start_to_gbp: 500, runs_in_every_month: 400, leverage: 200, an_account_is_dead_below: 0.5, death_cap: 0.05 },
+  plans_tried: [{ plan: "0.25% of the balance on every set", plan_key: "percent:0.25", safe: false, not_safe_because: ["x"], practice: { middle: 0, died: 0, runs: 2800, could_not_trade: 2800 }, older: { middle: 0, died: 0, runs: 14000, could_not_trade: 14000 } },
+    { plan: "2% of the balance on every set", plan_key: "percent:2", safe: false, not_safe_because: ["y"], practice: { middle: -4.2, died: 120, runs: 2800, could_not_trade: 300 }, older: { middle: 1.1, died: 800, runs: 14000, could_not_trade: 5000 } }],
+  chosen: { version: "abc", plan: { type: "percent", value: 2 }, plan_words: "2% of the balance on every set", losing_run: { deepest_r: 31.26, month: "2022-01", where: "older practice", largest_percent_plan: 2.19 },
+    practice: played(-4.2, { runs: 2800, died: 120, could_not_trade: 300 }), older: played(1.1, { runs: 14000, died: 800, could_not_trade: 5000 }) },
+  safe_on_the_study_months: false, not_safe_because: ["more than 1 account in 20 died on the older practice months", "the money plan is too big"],
+  unseen: played(-6.05), standard_unseen: { trades: 640, pnl_gbp: -312.4 }, makes_money_on_the_unseen_months: false,
+  the_exam_months_for_the_record: { small_account: played(2.4, { runs: 13600, could_not_trade: 0 }), standard: { trades: 3000, pnl_gbp: 810 } } };
+
+test("the buys-only version on a small account: the Engine's own pounds, the plan that stands, and whether it counts", () => {
+  const v = nasdaqVersion(VERSION, "Europe/London");
+  assert.deepEqual([v.title, v.chip, v.money], ["The buys-only version does not count.", { kind: "no", text: "Does not count" }, "−£6.05"]);
+  assert.equal(v.unseen, "On the 6 unseen months, a small account: middle run −£6.05, average −£4.55, best +£240.10, worst −£210.55; 96 of 2,400 accounts died; 310 could not open a single set.");
+  assert.equal(v.standard, "The Engine's standard account on those months: 640 trades, −£312.40.");
+  assert.equal(v.plan, "The plan that stands: 2% of the balance on every set.");
+  assert.equal(v.safe, "Not safe on the study months: more than 1 account in 20 died on the older practice months; the money plan is too big.");
+  assert.equal(v.limit, "Its deepest losing run within one study month is 31.3 R (Jan 2022), so a set may risk at most 2.19% of the balance.");
+  assert.ok(v.study.startsWith("Practice months: middle run −£4.20, average −£2.70, best +£240.10, worst −£210.55; 120 of 2,800 accounts died; 300 could not open a single set. Older practice months: middle run +£1.10"));
+  assert.deepEqual(v.rows, [{ plan: "0.25%", practice: "£0.00", practiceDied: "0 of 2,800", older: "£0.00", olderDied: "0 of 14,000", idle: "16,800" },
+    { plan: "2%", practice: "−£4.20", practiceDied: "120 of 2,800", older: "+£1.10", olderDied: "800 of 14,000", idle: "5,300" }]);
+  assert.deepEqual(v.reasons, [], "some accounts traded on the unseen months, and no plan let every account trade: nothing is said that the file does not show");
+  const idle = nasdaqVersion({ ...VERSION, unseen: played(0, { could_not_trade: 2400, died: 0 }), plans_tried: [...VERSION.plans_tried, { plan: "5% of the balance on every set", safe: false,
+    practice: { middle: -12.33, died: 231, runs: 2800, could_not_trade: 0 }, older: { middle: -12.49, died: 1419, runs: 14000, could_not_trade: 0 } }, { plan: "Hassan's stepped cap (20% of the start a set)", safe: true,
+    practice: { middle: 1, died: 0, runs: 2800, could_not_trade: 0 }, older: { middle: 1, died: 0, runs: 14000, could_not_trade: 0 } }] });
+  assert.deepEqual(idle.reasons, ["Not one of the 2,400 accounts could open a single set there: with this plan the smallest Nasdaq position the broker allows risks more than the plan lets a set risk.",
+    "At 5% of the balance a set, every account could trade: 231 of 2,800 died on the practice months, and the middle run was −£12.33."]);
+  assert.deepEqual(idle.rows.slice(2).map((r) => r.plan), ["5%", "Hassan's stepped cap (safe)"]);
+  assert.ok(v.record.startsWith("For the record, with no say in the answer, the months the lead was tried on: middle run +£2.40") && !v.record.includes("could not open"));
+  assert.ok(v.detail.startsWith("400 runs started in every month, starting balances from £100 to £500") && v.detail.includes("It counts only if it is safe on the study months and it makes money on the unseen months.")
+    && v.detail.includes("Built and looked at once, on 18 Nov 2026, 23:10"));
+  const good = nasdaqVersion({ ...VERSION, counts: true, safe_on_the_study_months: true, not_safe_because: [], unseen: played(12.5) });
+  assert.deepEqual([good.title, good.chip, good.money, good.safe], ["The buys-only version counts.", { kind: "ok", text: "Counts" }, "+£12.50", "Safe on the study months."]);
+  assert.equal(nasdaqVersion(null), null);
+  assert.equal(nasdaqVersion({ chosen: {} }), null, "no answer on file, nothing said");
 });
