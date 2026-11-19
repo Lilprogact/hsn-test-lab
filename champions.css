@@ -350,3 +350,17 @@ html.cx-on, html.cx-on body { background: #ffffff; }
   .cx-live-state.cx-working .cx-live-dot, .cx-state .cx-live-dot { animation: none; }
   .cx-root a.cx-tile, .cx-more summary::after { transition: none; }
 }
+
+/* Smart Money Concepts tile: two short tables side by side on a wide screen, the long ones folded away */
+.cx-smc-tile .cx-table-wrap { margin: 12px 0 10px; }
+.cx-smc-tile th { white-space: normal; vertical-align: bottom; }
+.cx-smc-tile td:first-child { min-width: 0; white-space: normal; }
+.cx-smc-tile .cx-edge-top td:first-child { width: 58%; }
+.cx-smc-tile .cx-more td:first-child { min-width: 9em; }
+.cx-root .cx-smc-tile .cx-exam-kinds { margin: 12px 0 12px; }
+.cx-smc-tile .cx-edge-since + .cx-cap { margin-top: 10px; }
+.cx-smc-tile .cx-more td:first-child { white-space: nowrap; }
+.cx-smc-tile .cx-more:first-of-type td:first-child, .cx-smc-tile .cx-more:nth-of-type(2) td:first-child { white-space: normal; }
+@media (min-width: 900px) {
+  .cx-root .cx-smc-tile .cx-exam-kinds { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}

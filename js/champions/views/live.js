@@ -8,11 +8,12 @@ import { unseenRows, unseenHeadline, unseenFor } from "../logic/unseen.js";
 import { edgeHeadline, edgeBars, edgeGroups, edgeExits } from "../logic/edge.js";
 import { examHeadline, examWinners, examLosers, examBase, examAfterStudy } from "../logic/exam.js";
 import { nasdaqHeadline, nasdaqProof, nasdaqExamWords, nasdaqCarried, nasdaqLong, nasdaqVersion, nasdaqUnit } from "../logic/nasdaq.js";
+import { smcHeadline, smcTotals, smcIdeas, smcSpread, smcTrend, smcPublished, smcCandidates, smcRules, smcSmallest } from "../logic/smc.js";
 import { hero, weeksTrack } from "../logic/overview.js";
 import { checkLines, checksSummary, storedPrices } from "../logic/checks.js";
 import { bullets, dataTable, todoBox, unreadNote } from "./parts.js";
 
-export const needs = ["progress", "unseen", "edge", "exam", "nasdaq", "nasdaqLong", "nasdaqVersion", "nasdaqProof", "score", "card", "score2", "card2", "login", "cloud", "coverage", "match", "agents"];
+export const needs = ["progress", "unseen", "edge", "exam", "nasdaq", "nasdaqLong", "nasdaqVersion", "nasdaqProof", "smc", "score", "card", "score2", "card2", "login", "cloud", "coverage", "match", "agents"];
 export const watch = ["progress"];                            // read again while the page is open
 
 const progressOf = (out, failed) => (failed.progress ? null : out.progress);
@@ -313,6 +314,48 @@ function nasdaqSection(study, counting, longSide, built) {
   return h("section", { class: "wrap" }, h("div", { class: "tile edge-tile nasdaq-tile" }, ...parts));
 }
 
+/** Smart Money Concepts: the taught rules, his indicator as a filter and three published rules, each tried both ways round. */
+function smcSection(study) {
+  const head = smcHeadline(study);
+  if (!head) return null;
+  const totals = smcTotals(study), ideas = smcIdeas(study), spread = smcSpread(study), trend = smcTrend(study), published = smcPublished(study), least = smcSmallest(study);
+  const ways = (symbol, withTrend) => dataTable(["Way of trading it", "Target", "Trades", "A trade", "Spread cost", "In profit", "Earned the exam"],
+    smcCandidates(study, symbol, withTrend).map((r) => [r.name, r.exit, r.trades, r.average, r.cost, r.stretches, r.verdict]), { numeric: [2, 3, 4] });
+  const rules = smcRules(study);
+  return h("section", { class: "wrap" }, h("div", { class: `tile edge-tile smc-tile ${head.earned ? "attention" : ""}`.trim() },
+    h("div", { class: "edge-top" },
+      h("div", {},
+        h("p", { class: "tile-label" }, "Smart Money Concepts, on gold and Nasdaq"),
+        h("h2", { class: "slim-title" }, head.title),
+        h("p", { class: "cap" }, head.detail),
+        head.luck ? h("p", { class: "cap" }, head.luck) : null,
+        dataTable(["", "Gold", "Nasdaq"], totals.map((r) => [r.what, r.gold, r.nasdaq]), { numeric: [1, 2] })),
+      h("div", {},
+        h("p", { class: "tile-label" }, "What each idea made a trade, after the spread"),
+        dataTable(["Idea", "Gold", "Nasdaq"], ideas.map((r) => [r.idea, r.gold, r.nasdaq]), { numeric: [1, 2] }),
+        h("p", { class: "cap" }, "R is what a trade risks: +1 R wins what was risked, −1 R loses it. The first four are on the 5-minute chart."))),
+    spread ? h("p", { class: "edge-since" }, spread) : null,
+    ...trend.map((line) => h("p", { class: "cap" }, line)),
+    published.length ? h("div", { class: "nasdaq-lead" },
+      h("p", { class: "tile-label" }, "Three rules from published research, on the same prices"),
+      h("ol", { class: "exam-kinds" }, ...published.map((r) => h("li", {},
+        h("div", { class: "round-row" }, h("p", { class: "feed-name" }, r.rule), chip(r.chip)),
+        h("p", { class: "cap" }, r.how),
+        h("p", { class: "cap" }, r.text))))) : null,
+    least ? h("p", { class: "cap" }, least) : null,
+    h("p", { class: "cap" }, "Every trade here opens and closes inside one day. The months held back were not read: nothing earned a look at them."),
+    ...[["XAUUSD", "Gold"], ["NAS100", "Nasdaq"]].map(([symbol, name]) => fold(`smc-${symbol}`, `${name}: every way it was tried (${smcCandidates(study, symbol, false).length + smcCandidates(study, symbol, true).length})`,
+      ways(symbol, false),
+      h("p", { class: "cap" }, "The same, taking only the trades that go with your 1-hour trend line:"),
+      ways(symbol, true))),
+    rules.length ? fold("smc-rules", `Every rule on its own, as taught and the other way round (${rules.length})`,
+      dataTable(["Rule", "Trades", "Taught, 2R", "Reversed, 2R", "Taught, no target", "Reversed, no target", "Spread", "Smallest risk"],
+        rules.map((r) => [r.rule, r.trades, r.taught, r.mirror, r.taughtRun, r.mirrorRun, r.spread, r.least]), { numeric: [1, 2, 3, 4, 5, 6, 7] }),
+      h("p", { class: "cap" }, "T: the first touch of a level (PD the previous day, AS the Asian range, LN the London range; LDN and NY are the windows). FV: return to a fair value gap. OB: return to an order block. "
+        + "LG: your indicator's liquidity grab. HS: your Buy and Sell. OR: opening range. LH: last half hour. AH and CX: gold's Asian hours and its control. "
+        + "Spread: the spread as a share of the rule's middle stop. Smallest risk: what FOREX.com's smallest position would risk on that stop. Described only: no decision hangs on a single rule.")) : null));
+}
+
 export function render({ out, failed, now }) {
   const progress = progressOf(out, failed);
   const live = liveState(progress, now);
@@ -320,6 +363,7 @@ export function render({ out, failed, now }) {
   const study = failed.edge ? null : out.edge, exam = failed.exam ? null : out.exam;
   const nasdaq = failed.nasdaq ? null : out.nasdaq, nasdaqFiles = failed.nasdaqProof ? null : out.nasdaqProof, nasdaqLead = failed.nasdaqLong ? null : out.nasdaqLong,
     nasdaqBuilt = failed.nasdaqVersion ? null : out.nasdaqVersion;
+  const smc = failed.smc ? null : out.smc;
   const card = failed.card ? null : out.card, score = failed.score ? null : out.score;
   const forward = failed.score ? { ok: false, title: "The score could not be read.", sub: failed.score.message, todo: null } : hero(out.score, card, storedPrices(out, failed), now);
   const card2 = failed.card2 ? null : out.card2;
@@ -362,9 +406,10 @@ export function render({ out, failed, now }) {
       edgeSection(study, exam),
       examSection(exam),
       nasdaqSection(nasdaq, nasdaqFiles, nasdaqLead, nasdaqBuilt),
+      smcSection(smc),
       h("section", { class: "wrap cards" }, ...progress.agents.map((a) => agentTile(a, progress, now, finished)), feedTile(progress, now)));
   } else {
-    parts.push(unseenSection(finished, [], !!card2), edgeSection(study, exam), examSection(exam), nasdaqSection(nasdaq, nasdaqFiles, nasdaqLead, nasdaqBuilt));
+    parts.push(unseenSection(finished, [], !!card2), edgeSection(study, exam), examSection(exam), nasdaqSection(nasdaq, nasdaqFiles, nasdaqLead, nasdaqBuilt), smcSection(smc));
   }
 
   parts.push(
