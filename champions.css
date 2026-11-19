@@ -361,6 +361,10 @@ html.cx-on, html.cx-on body { background: #ffffff; }
 .cx-smc-tile .cx-edge-since + .cx-cap { margin-top: 10px; }
 .cx-smc-tile .cx-more td:first-child { white-space: nowrap; }
 .cx-smc-tile .cx-more:first-of-type td:first-child, .cx-smc-tile .cx-more:nth-of-type(2) td:first-child { white-space: normal; }
+.cx-smc-tile .cx-nasdaq-lead .cx-more { margin-top: 10px; }
+.cx-smc-tile .cx-nasdaq-lead .cx-more td:first-child { white-space: normal; min-width: 6em; }
+.cx-smc-tile .cx-nasdaq-lead .cx-more td:nth-child(2) { white-space: normal; min-width: 9em; }
+.cx-smc-tile .cx-nasdaq-lead > .cx-table-wrap td:first-child { width: 58%; }
 @media (min-width: 900px) {
   .cx-root .cx-smc-tile .cx-exam-kinds { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }

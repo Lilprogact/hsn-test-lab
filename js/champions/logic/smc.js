@@ -8,6 +8,7 @@ const count = (n) => Number(n || 0).toLocaleString("en-GB", { maximumFractionDig
 const num = (v) => (v === null || v === undefined || v === "" || Number.isNaN(Number(v)) ? null : Number(v));
 const WORDS = ["none", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
 const word = (n) => WORDS[n] || count(n);
+const cap = (t) => (t ? t[0].toUpperCase() + t.slice(1) : "");
 const SYMBOLS = [["XAUUSD", "Gold"], ["NAS100", "Nasdaq"]];
 const TAUGHT = new Set(["T", "FV", "OB", "LG", "HS"]);
 const sign = (v) => (num(v) === null || Number(v) === 0 ? "" : Number(v) > 0 ? "up" : "down");
@@ -137,4 +138,32 @@ export function smcSmallest(study) {
   if (!least.length) return "";
   return `On scaling up: there is nothing here to scale. The size of a trade cannot turn a rule that loses after costs into one that wins. `
     + `These day trades could be sized on £100 to £500 (FOREX.com's smallest position would risk £${Math.min(...least).toFixed(2)} to £${Math.max(...least).toFixed(2)} on a rule's middle stop); they have no edge to size.`;
+}
+
+const ROUND_TWO = { "NA-FAR": "Out beyond the far edge", "NA-IN": "Out when back inside", "NA-AVG": "Out when back inside or across the day's average" };
+
+/** Round 2 (champions/smc/trend/study.json and, if it was sat, exam.json): the published intraday trend rule.
+ *  {title, chip, detail, summary: [{way, gold, nasdaq}], rows: [{who, way, trades, average, other, stretches, verdict}], exam}, or null with no study on file. */
+export function smcRoundTwo(study, exam) {
+  const cands = all(study);
+  if (!cands.length) return null;
+  const earned = cands.filter((c) => c.mark && c.mark.passes), could = cands.filter(judged), lk = study.luck || {};
+  const sat = exam && Array.isArray(exam.candidates) ? exam.candidates : null;
+  const passed = sat ? sat.filter((c) => c.mark && c.mark.passes) : [];
+  const title = !earned.length ? `None of the ${count(cands.length)} ways to trade it made money beyond luck.`
+    : !sat ? `${earned.length === 1 ? "One" : cap(word(earned.length))} of the ${count(cands.length)} ways earned the exam. The exam has not been sat.`
+      : passed.length ? `${passed.length === 1 ? "One way" : `${cap(word(passed.length))} ways`} passed the exam on months never read.`
+        : `${earned.length === 1 ? "One way" : `${cap(word(earned.length))} ways`} earned the exam, and ${earned.length === 1 ? "it" : "none"} ${earned.length === 1 ? "did not pass" : "passed"} it.`;
+  const chip = passed.length ? { kind: "ok", text: "Passed the exam" } : earned.length && !sat ? { kind: "unread", text: "Exam to sit" } : { kind: "no", text: earned.length ? "Did not hold" : "Not more than luck" };
+  const best = could.reduce((a, c) => Math.max(a, Number(c.mark.t)), -Infinity);
+  const detail = `Buy when price is above its usual range for that time of day, sell when below, looked at on the hour and the half hour; one trade a day, out by 16:00 New York. `
+    + `${count(study.trades)} trades on the 42 study months, each also taken the other way round. ${Number.isFinite(best) ? `The strongest way reached ${best.toFixed(2)} on a mark that asks for 2. ` : ""}`
+    + `${num(lk.average) === null ? "" : `With a coin choosing each day's direction, ${Number(lk.average).toFixed(2)} earn the exam on average.`}`;
+  const row = (c, stretches) => ({ who: `${c.symbol === "XAUUSD" ? "Gold" : "Nasdaq"}${c.with_his_trend ? ", with your trend line" : ""}`, way: ROUND_TWO[c.key] || c.name, trades: count(c.mark.trades),
+    average: cell(c.mark.average_r, 3), other: cell((c.the_other_way_round || {}).average_r, 3), stretches: `${c.mark.stretches_in_profit} of ${stretches}`,
+    verdict: !c.mark.judged ? "Too few trades" : c.mark.passes ? "Yes" : "No" });
+  const plain = (symbol, key) => cands.find((c) => c.symbol === symbol && c.key === key && !c.with_his_trend);
+  const summary = Object.entries(ROUND_TWO).map(([key, wayOut]) => ({ way: wayOut, gold: cell((plain("XAUUSD", key) || { mark: {} }).mark.average_r, 3), nasdaq: cell((plain("NAS100", key) || { mark: {} }).mark.average_r, 3) }))
+    .filter((r) => r.gold.text || r.nasdaq.text);
+  return { title, chip, detail: detail.trim(), summary, rows: cands.map((c) => row(c, 6)), exam: sat ? sat.map((c) => row(c, 5)) : null };
 }

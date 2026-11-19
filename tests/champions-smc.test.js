@@ -2,7 +2,7 @@
 // of the engine's own (champions/smc/study.json). The page repeats the engine's counts and marks; it decides nothing.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { IDEAS, smcHeadline, smcTotals, smcIdeas, smcSpread, smcTrend, smcPublished, smcCandidates, smcRules, smcSmallest } from "../js/champions/logic/smc.js";
+import { IDEAS, smcHeadline, smcTotals, smcIdeas, smcSpread, smcTrend, smcPublished, smcCandidates, smcRules, smcSmallest, smcRoundTwo } from "../js/champions/logic/smc.js";
 
 const mark = (trades, average, t, stretches, judged = true, passes = false) => ({ trades, total_r: Math.round(trades * average * 100) / 100, average_r: average, t, days: trades,
   stretches_in_profit: stretches, judged, passes, by_stretch: [] });
@@ -91,4 +91,37 @@ test("every way, plain and with his trend, and every rule on its own", () => {
   assert.equal(smcSmallest(STUDY), "On scaling up: there is nothing here to scale. The size of a trade cannot turn a rule that loses after costs into one that wins. "
     + "These day trades could be sized on £100 to £500 (FOREX.com's smallest position would risk £1.99 to £2.95 on a rule's middle stop); they have no edge to size.");
   assert.equal(smcSmallest({ every_rule: [] }), "");
+});
+
+const way = (symbol, key, m, his = false) => ({ id: `${symbol}:${key}${his ? ":his" : ""}`, symbol, key, name: "noise area", with_his_trend: his, mark: m, the_other_way_round: { average_r: -0.02 } });
+const ROUND = { trades: 3012, luck: { average: 0.03 }, sits_the_exam: [],
+  candidates: [way("XAUUSD", "NA-FAR", mark(505, -0.011, -0.84, 2)), way("XAUUSD", "NA-IN", mark(505, -0.004, -0.4, 3), true), way("NAS100", "NA-AVG", mark(498, 0.012, 1.31, 4)), way("NAS100", "NA-IN", mark(140, 0.02, 0.9, 5, false))] };
+
+test("round 2: none earned the exam, in plain words, with every way listed", () => {
+  const r = smcRoundTwo(ROUND, null);
+  assert.equal(r.title, "None of the 4 ways to trade it made money beyond luck.");
+  assert.deepEqual(r.chip, { kind: "no", text: "Not more than luck" });
+  assert.equal(r.detail, "Buy when price is above its usual range for that time of day, sell when below, looked at on the hour and the half hour; one trade a day, out by 16:00 New York. "
+    + "3,012 trades on the 42 study months, each also taken the other way round. The strongest way reached 1.31 on a mark that asks for 2. With a coin choosing each day's direction, 0.03 earn the exam on average.");
+  assert.deepEqual(r.rows[0], { who: "Gold", way: "Out beyond the far edge", trades: "505", average: { text: "−0.011 R", sign: "down" }, other: { text: "−0.020 R", sign: "down" }, stretches: "2 of 6", verdict: "No" });
+  assert.deepEqual(r.rows.map((x) => [x.who, x.verdict]), [["Gold", "No"], ["Gold, with your trend line", "No"], ["Nasdaq", "No"], ["Nasdaq", "Too few trades"]]);
+  assert.deepEqual(r.summary, [{ way: "Out beyond the far edge", gold: { text: "−0.011 R", sign: "down" }, nasdaq: { text: "", sign: "" } },
+    { way: "Out when back inside", gold: { text: "", sign: "" }, nasdaq: { text: "+0.020 R", sign: "up" } },
+    { way: "Out when back inside or across the day's average", gold: { text: "", sign: "" }, nasdaq: { text: "+0.012 R", sign: "up" } }], "the plain ways only: the one with his trend line is in the fold");
+  assert.equal(r.exam, null);
+  assert.equal(smcRoundTwo(null, null), null);
+});
+
+test("round 2: a way that earned the exam waits for it, then passes or does not hold", () => {
+  const earned = { ...ROUND, sits_the_exam: ["NAS100:NA-AVG"], candidates: ROUND.candidates.map((c) => (c.key === "NA-AVG" ? { ...c, mark: { ...c.mark, t: 2.4, passes: true } } : c)) };
+  const waiting = smcRoundTwo(earned, null);
+  assert.equal(waiting.title, "One of the 4 ways earned the exam. The exam has not been sat.");
+  assert.deepEqual(waiting.chip, { kind: "unread", text: "Exam to sit" });
+  const failed = smcRoundTwo(earned, { candidates: [way("NAS100", "NA-AVG", mark(410, -0.003, -0.2, 2))] });
+  assert.equal(failed.title, "One way earned the exam, and it did not pass it.");
+  assert.deepEqual(failed.chip, { kind: "no", text: "Did not hold" });
+  assert.deepEqual(failed.exam[0].stretches, "2 of 5");
+  const held = smcRoundTwo(earned, { candidates: [way("NAS100", "NA-AVG", { ...mark(410, 0.02, 2.2, 4), passes: true })] });
+  assert.equal(held.title, "One way passed the exam on months never read.");
+  assert.deepEqual(held.chip, { kind: "ok", text: "Passed the exam" });
 });

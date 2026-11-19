@@ -26,7 +26,7 @@ const FILES = {
   edge: "champions/edge/study.json", exam: "champions/edge/exam.json",
   nasdaq: "champions/nasdaq/study.json", nasdaqProof: "champions/nasdaq/tv_counting.json", nasdaqLong: "champions/nasdaq/long_side.json",
   nasdaqVersion: "champions/nasdaq/version.json",
-  smc: "champions/smc/study.json",
+  smc: "champions/smc/study.json", smcTrend: "champions/smc/trend/study.json",
 };
 const BRANCHES = { progress: ["champions-live", "main"] };    // where a file is looked for, in order: the judge's own branch first, then the saved copy
 const AGAIN_MS = 15000;                                      // a page that is watched is read again this often while it is open and in view
